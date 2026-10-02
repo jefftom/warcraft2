@@ -1,0 +1,16 @@
+{
+  "name": "ironvale",
+  "version": "0.1.0",
+  "description": "A browser real-time strategy game in the spirit of Warcraft II.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "build": "node scripts/build.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

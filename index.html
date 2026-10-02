@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- BUILD:HEAD -->
+<title>Ironvale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700&family=Grenze+Gotisch:wght@500;700&display=swap">
+<!-- /BUILD:HEAD -->
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- BUILD:BODY -->
+<div id="app">
+  <aside id="console" aria-label="Command console">
+    <div class="crest">Ironvale</div>
+    <div class="minimap-frame"><canvas id="minimap" width="216" height="216" aria-label="Minimap"></canvas></div>
+    <section id="info" class="plate" aria-live="polite"></section>
+    <section id="commands" class="orders" aria-label="Orders"></section>
+  </aside>
+  <section id="field">
+    <header id="topbar">
+      <div class="res" title="Gold"><span class="glyph g-gold" aria-hidden="true"></span><b id="gold">0</b></div>
+      <div class="res" title="Lumber"><span class="glyph g-wood" aria-hidden="true"></span><b id="wood">0</b></div>
+      <div class="res" title="Food used / food available"><span class="glyph g-food" aria-hidden="true"></span><b id="food">0/0</b></div>
+      <div class="spacer"></div>
+      <div id="clock" class="clock" title="Game time">0:00</div>
+      <button id="btn-sound" class="bar-btn" type="button" aria-pressed="false">Sound on</button>
+      <button id="btn-menu" class="bar-btn" type="button">Menu</button>
+    </header>
+    <div id="stage">
+      <canvas id="game" aria-label="Battlefield"></canvas>
+      <div id="messages" aria-live="polite"></div>
+      <div id="tooltip" role="tooltip" hidden></div>
+    </div>
+  </section>
+
+  <div id="overlay">
+    <div id="screen-title" class="screen">
+      <div class="sheet">
+        <p class="eyebrow">A real-time strategy game</p>
+        <h1>Ironvale</h1>
+        <p class="lede">Mine gold, fell the forests, raise farms and barracks, then march on the red stronghold before it marches on yours.</p>
+        <div class="options">
+          <div class="opt">
+            <span class="opt-label" id="lbl-difficulty">Enemy</span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-difficulty" data-setting="difficulty">
+              <button type="button" data-v="easy">Easy</button>
+              <button type="button" data-v="normal">Normal</button>
+              <button type="button" data-v="hard">Hard</button>
+            </div>
+          </div>
+          <div class="opt">
+            <span class="opt-label" id="lbl-speed">Speed</span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-speed" data-setting="speed">
+              <button type="button" data-v="0.75">Slow</button>
+              <button type="button" data-v="1">Normal</button>
+              <button type="button" data-v="1.5">Fast</button>
+            </div>
+          </div>
+        </div>
+        <button id="btn-start" class="primary" type="button">March to war</button>
+        <p class="touch-note">Ironvale is played with a mouse and keyboard on a wide screen.</p>
+        <details class="help">
+          <summary>How to play</summary>
+          <div class="help-body"></div>
+        </details>
+      </div>
+    </div>
+
+    <div id="screen-pause" class="screen" hidden>
+      <div class="sheet">
+        <h2>Paused</h2>
+        <div class="stack">
+          <button id="btn-resume" class="primary" type="button">Resume</button>
+          <button id="btn-restart" type="button">Restart on a new map</button>
+          <button id="btn-quit" type="button">Quit to title</button>
+        </div>
+        <details class="help">
+          <summary>How to play</summary>
+          <div class="help-body"></div>
+        </details>
+      </div>
+    </div>
+
+    <div id="screen-end" class="screen" hidden>
+      <div class="sheet">
+        <p class="eyebrow" id="end-eyebrow">The battle is over</p>
+        <h2 id="end-title">Victory</h2>
+        <p class="lede" id="end-text"></p>
+        <div class="table-wrap"><table id="end-stats"></table></div>
+        <div class="stack row">
+          <button id="btn-again" class="primary" type="button">Play again</button>
+          <button id="btn-title" type="button">Title screen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /BUILD:BODY -->
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
