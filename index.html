@@ -53,6 +53,13 @@
             </div>
           </div>
           <div class="opt">
+            <span class="opt-label" id="lbl-view">View</span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-view" data-setting="view">
+              <button type="button" data-v="3d">3D</button>
+              <button type="button" data-v="2d">Classic</button>
+            </div>
+          </div>
+          <div class="opt">
             <span class="opt-label" id="lbl-speed">Speed</span>
             <div class="seg" role="radiogroup" aria-labelledby="lbl-speed" data-setting="speed">
               <button type="button" data-v="0.75">Slow</button>
@@ -100,6 +107,9 @@
   </div>
 </div>
 <!-- /BUILD:BODY -->
+<script type="importmap">
+{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }
+</script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -2,15 +2,17 @@
 // turning clicks into game commands.
 
 import { TILE, PLAYER, UNITS, BUILDINGS, RESEARCH, BUILD_MENU } from './config.js';
-import { clamp } from './util.js';
-import { isEntityVisible } from './renderer.js';
+import { isEntityVisible } from './visibility.js';
 
 const SCROLL_SPEED = 900;
 const EDGE = 10;
 
 export class Controller {
-  constructor(game, canvas, minimapCanvas, audio) {
+  // `view` is the active renderer: it owns the camera and knows how to pick
+  // things on screen (see the view interface in renderer.js).
+  constructor(game, canvas, minimapCanvas, audio, view) {
     this.game = game;
+    this.view = view;
     this.canvas = canvas;
     this.minimapCanvas = minimapCanvas;
     this.audio = audio;
@@ -34,9 +36,8 @@ export class Controller {
     this.minimapDrag = false;
 
     const s = game.starts[PLAYER];
-    this.camX = 0;
-    this.camY = 0;
-    this.centerOn((s.x + 2) * TILE, (s.y + 2) * TILE);
+    this.home = { x: (s.x + 2) * TILE, y: (s.y + 2) * TILE };
+    this.centered = false;
     this.bind();
   }
 
@@ -45,20 +46,14 @@ export class Controller {
   setViewSize(w, h) {
     this.viewW = w;
     this.viewH = h;
-    this.clampCamera();
+    if (!this.centered) {
+      this.centered = true;
+      this.centerOn(this.home.x, this.home.y);
+    }
   }
 
   centerOn(px, py) {
-    this.camX = px - this.viewW / 2;
-    this.camY = py - this.viewH / 2;
-    this.clampCamera();
-  }
-
-  clampCamera() {
-    const maxX = this.game.map.w * TILE - this.viewW;
-    const maxY = this.game.map.h * TILE - this.viewH;
-    this.camX = maxX < 0 ? maxX / 2 : clamp(this.camX, 0, maxX);
-    this.camY = maxY < 0 ? maxY / 2 : clamp(this.camY, 0, maxY);
+    this.view.centerOn(px, py);
   }
 
   update(dt) {
@@ -81,11 +76,7 @@ export class Controller {
         if (inX && y > this.viewH - EDGE) dy += 1;
       }
     }
-    if (dx || dy) {
-      this.camX += dx * SCROLL_SPEED * dt;
-      this.camY += dy * SCROLL_SPEED * dt;
-      this.clampCamera();
-    }
+    if (dx || dy) this.view.panBy(dx * SCROLL_SPEED * dt, dy * SCROLL_SPEED * dt);
     for (const m of this.markers) m.t += dt;
     this.markers = this.markers.filter((m) => m.t < m.life);
     for (const a of this.alerts) a.t += dt;
@@ -94,13 +85,11 @@ export class Controller {
     this.updateHover();
   }
 
-  view(time) {
+  // Everything a renderer needs to draw this frame besides the game itself.
+  frame(time, dt = 0) {
     return {
-      camX: this.camX,
-      camY: this.camY,
-      viewW: this.viewW,
-      viewH: this.viewH,
       time,
+      dt,
       selection: new Set(this.selection),
       hover: this.hover,
       markers: this.markers,
@@ -144,42 +133,16 @@ export class Controller {
     if (entities.some((e) => e.owner === PLAYER)) this.audio.play('select');
   }
 
-  entityAt(px, py) {
-    const g = this.game;
-    let best = null;
-    let bestY = -Infinity;
-    for (const u of g.units) {
-      if (!isEntityVisible(g, u)) continue;
-      const r = u.type === 'knight' ? 16 : 11;
-      if (px >= u.x - r && px <= u.x + r && py >= u.y - 20 && py <= u.y + 13 && u.y > bestY) {
-        best = u;
-        bestY = u.y;
-      }
-    }
-    if (best) return best;
-    for (const b of g.buildings) {
-      if (!isEntityVisible(g, b)) continue;
-      const x0 = b.x * TILE;
-      const y0 = b.y * TILE - 16;
-      const s = b.size * TILE;
-      if (px >= x0 && px < x0 + s && py >= y0 && py < y0 + s + 16) return b;
-    }
-    return null;
+  pickAt(sx, sy) {
+    return this.view.pick(sx, sy);
   }
 
   boxSelect(x0, y0, x1, y1, add) {
-    const g = this.game;
-    const minX = Math.min(x0, x1) + this.camX;
-    const maxX = Math.max(x0, x1) + this.camX;
-    const minY = Math.min(y0, y1) + this.camY;
-    const maxY = Math.max(y0, y1) + this.camY;
-    const units = g.units.filter(
-      (u) => u.owner === PLAYER && !u.hidden && !u.dead && u.x >= minX - 8 && u.x <= maxX + 8 && u.y >= minY - 12 && u.y <= maxY + 10,
-    );
+    const units = this.view.unitsInRect(x0, y0, x1, y1).filter((u) => u.owner === PLAYER && !u.hidden && !u.dead);
     if (units.length) {
       this.setSelection(units, add);
     } else if (!add) {
-      const e = this.entityAt((minX + maxX) / 2, (minY + maxY) / 2);
+      const e = this.pickAt((x0 + x1) / 2, (y0 + y1) / 2);
       this.setSelection(e ? [e] : []);
     }
   }
@@ -192,10 +155,7 @@ export class Controller {
         o.type === e.type &&
         !o.hidden &&
         !o.dead &&
-        (o.kind === 'unit' ? o.x : o.px) >= this.camX &&
-        (o.kind === 'unit' ? o.x : o.px) <= this.camX + this.viewW &&
-        (o.kind === 'unit' ? o.y : o.py) >= this.camY &&
-        (o.kind === 'unit' ? o.y : o.py) <= this.camY + this.viewH,
+        this.view.isOnScreen(o.kind === 'unit' ? o.x : o.px, o.kind === 'unit' ? o.y : o.py),
     );
     this.setSelection(e.kind === 'unit' ? list : [e]);
   }
@@ -222,9 +182,7 @@ export class Controller {
       (e) => {
         e.preventDefault();
         if (!this.enabled) return;
-        this.camX += e.deltaX;
-        this.camY += e.deltaY;
-        this.clampCamera();
+        this.view.wheel(e.deltaX, e.deltaY);
       },
       { passive: false, signal: this.abort.signal },
     );
@@ -279,14 +237,12 @@ export class Controller {
     if (!this.enabled) return;
     this.audio.unlock();
     const p = this.canvasPoint(e);
-    const wx = p.x + this.camX;
-    const wy = p.y + this.camY;
     if (e.button === 2) {
       if (this.mode) {
         this.cancelMode();
         return;
       }
-      this.rightClick(wx, wy);
+      this.rightClick(p.x, p.y);
       return;
     }
     if (e.button !== 0) return;
@@ -295,7 +251,8 @@ export class Controller {
       return;
     }
     if (this.mode && this.mode.type === 'target') {
-      this.executeTarget(wx, wy, this.entityAt(wx, wy), e.shiftKey);
+      const w = this.view.screenToWorld(p.x, p.y);
+      if (w) this.executeTarget(w.x, w.y, this.pickAt(p.x, p.y), e.shiftKey);
       return;
     }
     this.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey };
@@ -328,9 +285,7 @@ export class Controller {
       this.boxSelect(d.x0, d.y0, d.x1, d.y1, d.shift);
       return;
     }
-    const wx = d.x0 + this.camX;
-    const wy = d.y0 + this.camY;
-    const ent = this.entityAt(wx, wy);
+    const ent = this.pickAt(d.x0, d.y0);
     if (!ent) {
       if (!d.shift) this.setSelection([]);
       return;
@@ -356,13 +311,17 @@ export class Controller {
     this.setSelection([ent]);
   }
 
-  rightClick(wx, wy) {
+  rightClick(sx, sy) {
     const g = this.game;
     const sel = this.selected();
+    const w = this.view.screenToWorld(sx, sy);
+    if (!w) return;
+    const wx = w.x;
+    const wy = w.y;
     const tx = Math.floor(wx / TILE);
     const ty = Math.floor(wy / TILE);
     if (!g.map.inBounds(tx, ty)) return;
-    const target = this.entityAt(wx, wy);
+    const target = this.pickAt(sx, sy);
     const units = this.ownSelectedUnits();
     if (units.length) {
       const what = g.commandSmart(units, tx, ty, target);
@@ -428,8 +387,10 @@ export class Controller {
     if (!this.mode || this.mode.type !== 'place') return null;
     const g = this.game;
     const def = BUILDINGS[this.mode.btype];
-    const x = Math.floor((this.mouse.x + this.camX) / TILE) - Math.floor((def.size - 1) / 2);
-    const y = Math.floor((this.mouse.y + this.camY) / TILE) - Math.floor((def.size - 1) / 2);
+    const w = this.view.screenToWorld(this.mouse.x, this.mouse.y);
+    if (!w) return null;
+    const x = Math.floor(w.x / TILE) - Math.floor((def.size - 1) / 2);
+    const y = Math.floor(w.y / TILE) - Math.floor((def.size - 1) / 2);
     const builder = this.ownSelectedUnits().find((u) => u.isWorker);
     return {
       type: this.mode.btype,
@@ -477,7 +438,7 @@ export class Controller {
     if (!this.mouse.inside || this.drag) {
       this.hover = null;
     } else {
-      this.hover = this.entityAt(this.mouse.x + this.camX, this.mouse.y + this.camY);
+      this.hover = this.pickAt(this.mouse.x, this.mouse.y);
     }
     let cursor = 'default';
     if (this.mode && this.mode.type === 'target') cursor = 'crosshair';

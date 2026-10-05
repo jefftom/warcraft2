@@ -13,16 +13,10 @@ import {
   drawFire,
   makeCanvas,
 } from './sprites.js';
+import { isEntityVisible } from './visibility.js';
+import { clamp } from './util.js';
 
-export function isEntityVisible(game, e) {
-  if (e.dead || e.hidden) return false;
-  if (e.owner === PLAYER || game.revealMap) return true;
-  if (e.kind === 'building') {
-    if (e.owner === NEUTRAL) return game.fog.rectExplored(e.rect());
-    return e.seen;
-  }
-  return game.fog.isVisible(e.tx, e.ty) || game.isExposed(e.owner);
-}
+export { isEntityVisible };
 
 export class Renderer {
   constructor(canvas, game) {
@@ -39,6 +33,8 @@ export class Renderer {
     this.fctx = this.fogCanvas.getContext('2d');
     this.fogImage = this.fctx.createImageData(w, h);
     this.fogVersion = -1;
+    this.camX = 0;
+    this.camY = 0;
     this.buildTerrain();
   }
 
@@ -50,6 +46,97 @@ export class Renderer {
     this.canvas.height = Math.round(height * this.dpr);
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
+    this.clampCamera();
+  }
+
+  dispose() {}
+
+  // ---- view interface (shared with the 3D renderer) ----------------------
+  // All world coordinates are game pixels: tile * TILE.
+
+  centerOn(px, py) {
+    this.camX = px - this.width / 2;
+    this.camY = py - this.height / 2;
+    this.clampCamera();
+  }
+
+  clampCamera() {
+    const maxX = this.game.map.w * TILE - this.width;
+    const maxY = this.game.map.h * TILE - this.height;
+    this.camX = maxX < 0 ? maxX / 2 : clamp(this.camX, 0, maxX);
+    this.camY = maxY < 0 ? maxY / 2 : clamp(this.camY, 0, maxY);
+  }
+
+  panBy(dx, dy) {
+    this.camX += dx;
+    this.camY += dy;
+    this.clampCamera();
+  }
+
+  wheel(dx, dy) {
+    this.panBy(dx, dy);
+  }
+
+  zoomBy() {}
+
+  screenToWorld(sx, sy) {
+    return { x: sx + this.camX, y: sy + this.camY };
+  }
+
+  worldToScreen(px, py) {
+    return { x: px - this.camX, y: py - this.camY };
+  }
+
+  isOnScreen(px, py, margin = 0) {
+    return px > this.camX - margin && px < this.camX + this.width + margin && py > this.camY - margin && py < this.camY + this.height + margin;
+  }
+
+  footprint() {
+    const x0 = this.camX;
+    const y0 = this.camY;
+    const x1 = x0 + this.width;
+    const y1 = y0 + this.height;
+    return [
+      { x: x0, y: y0 },
+      { x: x1, y: y0 },
+      { x: x1, y: y1 },
+      { x: x0, y: y1 },
+    ];
+  }
+
+  pick(sx, sy) {
+    const g = this.game;
+    const px = sx + this.camX;
+    const py = sy + this.camY;
+    let best = null;
+    let bestY = -Infinity;
+    for (const u of g.units) {
+      if (!isEntityVisible(g, u)) continue;
+      const r = u.type === 'knight' ? 16 : 11;
+      if (px >= u.x - r && px <= u.x + r && py >= u.y - 20 && py <= u.y + 13 && u.y > bestY) {
+        best = u;
+        bestY = u.y;
+      }
+    }
+    if (best) return best;
+    for (const b of g.buildings) {
+      if (!isEntityVisible(g, b)) continue;
+      const x0 = b.x * TILE;
+      const y0 = b.y * TILE - 16;
+      const s = b.size * TILE;
+      if (px >= x0 && px < x0 + s && py >= y0 && py < y0 + s + 16) return b;
+    }
+    return null;
+  }
+
+  unitsInRect(x0, y0, x1, y1) {
+    const minX = Math.min(x0, x1) + this.camX;
+    const maxX = Math.max(x0, x1) + this.camX;
+    const minY = Math.min(y0, y1) + this.camY;
+    const maxY = Math.max(y0, y1) + this.camY;
+    return this.game.units.filter(
+      (u) => isEntityVisible(this.game, u) && u.x >= minX - 8 && u.x <= maxX + 8 && u.y >= minY - 12 && u.y <= maxY + 10,
+    );
   }
 
   buildTerrain() {
@@ -102,7 +189,7 @@ export class Renderer {
 
   render(view) {
     const { ctx, game } = this;
-    const { camX, camY } = view;
+    const { camX, camY } = this;
     const W = this.width;
     const H = this.height;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -404,6 +491,21 @@ export class Minimap {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) this.setPixel(x, y);
     this.bctx.putImageData(this.image, 0, 0);
     this.dirty = false;
+    this.fogCanvas = makeCanvas(w, h);
+    this.fctx = this.fogCanvas.getContext('2d');
+    this.fogImage = this.fctx.createImageData(w, h);
+    this.fogVersion = -1;
+  }
+
+  updateFog() {
+    const fog = this.game.fog;
+    if (fog.version === this.fogVersion) return;
+    this.fogVersion = fog.version;
+    const data = this.fogImage.data;
+    for (let i = 0, n = fog.visible.length; i < n; i++) {
+      data[i * 4 + 3] = fog.visible[i] ? 0 : fog.explored[i] ? 135 : 255;
+    }
+    this.fctx.putImageData(this.fogImage, 0, 0);
   }
 
   setPixel(x, y) {
@@ -422,8 +524,9 @@ export class Minimap {
     this.dirty = true;
   }
 
-  render(view, fogCanvas) {
+  render(view, footprint) {
     const { ctx, game } = this;
+    this.updateFog();
     if (this.dirty) {
       this.bctx.putImageData(this.image, 0, 0);
       this.dirty = false;
@@ -449,7 +552,7 @@ export class Minimap {
       ctx.fillRect(u.x / TILE * sx - 1, u.y / TILE * sy - 1, Math.max(2, sx), Math.max(2, sy));
     }
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(fogCanvas, 0, 0, W, H);
+    ctx.drawImage(this.fogCanvas, 0, 0, W, H);
     for (const a of view.alerts) {
       const k = (a.t % 1);
       ctx.strokeStyle = `rgba(255,60,40,${1 - k})`;
@@ -459,12 +562,19 @@ export class Minimap {
       ctx.stroke();
       ctx.lineWidth = 1;
     }
-    ctx.strokeStyle = '#fff';
-    ctx.strokeRect(
-      (view.camX / TILE) * sx + 0.5,
-      (view.camY / TILE) * sy + 0.5,
-      (view.viewW / TILE) * sx,
-      (view.viewH / TILE) * sy,
-    );
+    // What the camera can see, as a polygon (a trapezoid in 3D).
+    if (footprint && footprint.length) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      footprint.forEach((p, i) => {
+        const x = clamp((p.x / TILE) * sx, 0, W - 0.5) + 0.5;
+        const y = clamp((p.y / TILE) * sy, 0, H - 0.5) + 0.5;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 }

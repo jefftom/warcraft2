@@ -62,13 +62,19 @@ let last = performance.now();
 let pending = null;
 let demoClock = 0;
 
+// The 3D renderer pulls in three.js; it is loaded lazily so the classic view
+// still works if WebGL (or the library) is unavailable.
+let Renderer3D = null;
+let renderer3dError = null;
+
 function loadSettings() {
-  const fallback = { difficulty: 'normal', speed: 1 };
+  const fallback = { difficulty: 'normal', speed: 1, view: '3d' };
   try {
     const s = JSON.parse(localStorage.getItem('ironvale.settings') || '{}');
     return {
       difficulty: DIFFICULTY[s.difficulty] ? s.difficulty : fallback.difficulty,
       speed: [0.75, 1, 1.5].includes(s.speed) ? s.speed : fallback.speed,
+      view: s.view === '2d' || s.view === '3d' ? s.view : fallback.view,
     };
   } catch {
     return fallback;
@@ -103,16 +109,41 @@ document.querySelectorAll('.seg').forEach((seg) => {
     syncSettingButtons();
     audio.unlock();
     audio.play('select');
+    // Show the new view straight away behind the title screen.
+    if (key === 'view' && state === 'title') startDemo();
   });
 });
 
 // ---- sessions -----------------------------------------------------------
 
+// A canvas keeps whichever context it first hands out (2D or WebGL), so every
+// session gets a fresh one.
+function freshCanvas() {
+  const c = document.createElement('canvas');
+  c.id = 'game';
+  c.setAttribute('aria-label', 'Battlefield');
+  els.canvas.replaceWith(c);
+  els.canvas = c;
+  return c;
+}
+
+function makeRenderer(game) {
+  if (settings.view === '3d' && Renderer3D) {
+    try {
+      return new Renderer3D(freshCanvas(), game, els.stage);
+    } catch (err) {
+      renderer3dError = err;
+      console.warn('3D view unavailable; using the classic view.', err);
+    }
+  }
+  return new Renderer(freshCanvas(), game);
+}
+
 function createSession(game, demo) {
   if (session) session.dispose();
-  const renderer = new Renderer(els.canvas, game);
+  const renderer = makeRenderer(game);
   const minimap = new Minimap(els.minimap, game);
-  const controller = new Controller(game, els.canvas, els.minimap, audio);
+  const controller = new Controller(game, els.canvas, els.minimap, audio, renderer);
   const ui = new UI(game, controller, els);
   controller.onMessage = (t) => ui.message(t);
   controller.onMenu = () => togglePause();
@@ -127,6 +158,7 @@ function createSession(game, demo) {
     dispose() {
       controller.dispose();
       ui.dispose();
+      renderer.dispose();
     },
   };
   els.messages.textContent = '';
@@ -248,15 +280,13 @@ function handleEvents() {
 }
 
 function playPositional(e) {
-  const { game, controller: c } = session;
+  const { game } = session;
   if (e.x === undefined) {
     if (e.owner === PLAYER) audio.play(e.name);
     return;
   }
   if (!game.fog.isVisible(Math.floor(e.x / TILE), Math.floor(e.y / TILE))) return;
-  const m = 160;
-  const onScreen = e.x > c.camX - m && e.x < c.camX + c.viewW + m && e.y > c.camY - m && e.y < c.camY + c.viewH + m;
-  if (onScreen) audio.play(e.name);
+  if (session.renderer.isOnScreen(e.x, e.y, 160)) audio.play(e.name);
   else if (e.owner === PLAYER && (e.name === 'complete' || e.name === 'ready')) audio.play(e.name, 0.5);
 }
 
@@ -278,13 +308,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function panDemo(dt) {
-  const c = session.controller;
+  const { game, renderer } = session;
   demoClock += dt;
-  const maxX = session.game.map.w * TILE - c.viewW;
-  const maxY = session.game.map.h * TILE - c.viewH;
-  c.camX = maxX * (0.5 + 0.48 * Math.sin(demoClock * 0.045));
-  c.camY = maxY * (0.5 + 0.48 * Math.sin(demoClock * 0.031 + 1.3));
-  c.clampCamera();
+  const W = game.map.w * TILE;
+  const H = game.map.h * TILE;
+  renderer.centerOn(W * (0.5 + 0.36 * Math.sin(demoClock * 0.045)), H * (0.5 + 0.36 * Math.sin(demoClock * 0.031 + 1.3)));
 }
 
 function frame(now) {
@@ -306,9 +334,9 @@ function frame(now) {
     handleEvents();
     controller.update(state === 'playing' ? dt : 0);
     renderer.syncTerrain(minimap);
-    const view = controller.view(game.time);
+    const view = controller.frame(game.time, dt);
     renderer.render(view);
-    minimap.render(view, renderer.fogCanvas);
+    minimap.render(view, renderer.footprint());
     ui.update();
   }
   if (pending) {
@@ -325,13 +353,22 @@ window.__ironvale = {
   get session() {
     return session;
   },
+  get renderer3dError() {
+    return renderer3dError;
+  },
 };
 
-function boot(data) {
+async function boot(data) {
   if (data && data.settings) {
     settings = { ...settings, ...data.settings };
   }
   syncSettingButtons();
+  try {
+    ({ Renderer3D } = await import('./three/index.js'));
+  } catch (err) {
+    renderer3dError = err;
+    console.warn('Could not load the 3D renderer; using the classic view.', err);
+  }
   startDemo();
   requestAnimationFrame(frame);
 }
