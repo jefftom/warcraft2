@@ -34,7 +34,8 @@ const HELP_HTML = `
 <tr><td>Shift + click</td><td>Add or remove a unit from the selection</td></tr>
 <tr><td>Double-click</td><td>Select every unit of that type on screen</td></tr>
 <tr><td>Ctrl + 1 to 9</td><td>Save a control group. Press the number to recall it, twice to jump there</td></tr>
-<tr><td>Arrows, edges, wheel</td><td>Scroll the map</td></tr>
+<tr><td>Arrows or screen edges</td><td>Scroll the map</td></tr>
+<tr><td>Mouse wheel, + and −</td><td>Zoom in and out (3D view); the wheel scrolls in the classic view</td></tr>
 <tr><td>Minimap</td><td>Click to look; right-click to send the selection</td></tr>
 <tr><td>Space</td><td>Center on the selection</td></tr>
 <tr><td>Esc</td><td>Cancel an order, or open this menu</td></tr>

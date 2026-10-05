@@ -476,6 +476,11 @@ export class Controller {
       this.controlGroup(key, e.ctrlKey || e.metaKey);
       return;
     }
+    if (key === '+' || key === '=' || key === '-' || key === '_') {
+      e.preventDefault();
+      this.view.zoomBy(key === '-' || key === '_' ? 240 : -240);
+      return;
+    }
     if (key === ' ') {
       e.preventDefault();
       const sel = this.selected();
