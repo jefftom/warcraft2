@@ -18,7 +18,7 @@
 
 import * as THREE from 'three';
 import { TILE } from '../config.js';
-import { box, cyl, cone, sphere, ico, dodeca, prism, merge, mix, hash } from './geo.js';
+import { box, cyl, cone, sphere, ico, dodeca, prism, merge, mix, hash, finish } from './geo.js';
 import { SWATCH, teamColors } from './palette.js';
 
 const TAU = Math.PI * 2;
@@ -31,7 +31,6 @@ const COL = {
   linenDark: '#b09862',
   trousers: '#6b5338',
   boot: '#4d3523',
-  bootDark: '#3a281a',
   straw: '#e6c262',
   strawLight: '#f1d987',
   beard: '#8a5a2e',
@@ -39,7 +38,6 @@ const COL = {
   mail: '#7c838b',
   leatherDark: '#523620',
   olive: '#5f6038',
-  oliveDark: '#4a4a2a',
   burlap: '#c4a46e',
   burlapDark: '#94784a',
   coat: '#efe9dd',
@@ -95,6 +93,18 @@ const strut = (a, b, w, d, color) => between(box(w, dist3(a, b), d, color), a, b
 /** A tapered cylinder from a (radius r0) to b (radius r1). */
 const rod = (a, b, r0, r1, segs, color) => between(cyl(r1, r0, dist3(a, b), segs, color), a, b);
 const scalePts = (pts, k) => pts.map(([x, y]) => [x * k, y * k]);
+
+/** An open elliptical frustum (a cloth skirt): top radii (x, z), bottom radii (x, z), height h. */
+function skirt(topRx, topRz, botRx, botRz, h, segs, color, t) {
+  const g = new THREE.CylinderGeometry(1, 1, h, segs, 1, true);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const top = p.getY(i) > 0;
+    p.setX(i, p.getX(i) * (top ? topRx : botRx));
+    p.setZ(i, p.getZ(i) * (top ? topRz : botRz));
+  }
+  return finish(g, color, t);
+}
 
 /** Collects model parts, each tagged with a bone and a material (matte or metal). */
 class Kit {
@@ -230,14 +240,14 @@ function buildPeasant(k, tc) {
   k.m(cyl(0.085, 0.125, 0.04, 8, mix(COL.linen, '#ffffff', 0.15), { y: 0.59 }));
   k.m(cyl(0.147, 0.147, 0.036, 8, SWATCH.leather, { y: 0.385 }));
   k.m(box(0.045, 0.036, 0.02, SWATCH.gold, { y: 0.385, z: 0.146 }));
-  k.m(box(0.08, 0.37, 0.3, tc.main, { y: 0.48, rz: 0.75 }));
+  k.m(skirt(0.186, 0.143, 0.186, 0.143, 0.075, 12, tc.main, { y: 0.47, rz: 0.75 }));
   k.m(cyl(0.048, 0.055, 0.05, 6, SWATCH.skinDark, { y: 0.61 }));
   k.on('head');
   humanFace(k, 0.69, 0);
   k.m(box(0.15, 0.06, 0.07, COL.beard, { y: 0.615, z: 0.075 }));
   k.m(box(0.2, 0.08, 0.1, COL.beard, { y: 0.71, z: -0.065 }));
   k.local({ y: 0.775, rx: -0.14 }, () => {
-    k.m(cyl(0.205, 0.215, 0.024, 12, COL.straw, {}));
+    k.m(cyl(0.185, 0.195, 0.024, 12, COL.straw, {}));
     k.m(cyl(0.085, 0.118, 0.09, 8, COL.strawLight, { y: 0.052 }));
     k.m(cyl(0.121, 0.121, 0.028, 8, tc.main, { y: 0.024 }));
   });
@@ -261,11 +271,12 @@ function buildPeasant(k, tc) {
   });
   // A sack of gold slung over the right shoulder.
   k.on('sack');
-  k.m(ico(0.15, 0, COL.burlap, { x: -0.03, y: 0.52, z: -0.22, s: 1 }));
-  k.m(ico(0.11, 0, COL.burlapDark, { x: -0.04, y: 0.42, z: -0.2 }));
-  k.m(rod([-0.06, 0.62, -0.19], [-0.13, 0.71, -0.11], 0.06, 0.035, 6, COL.burlapDark));
-  k.x(dodeca(0.042, SWATCH.gold, { x: -0.07, y: 0.66, z: -0.2 }));
-  k.x(dodeca(0.034, SWATCH.gold, { x: 0.0, y: 0.645, z: -0.24 }));
+  k.m(ico(0.165, 1, COL.burlap, { x: -0.1, y: 0.5, z: -0.2, s: 1 }));
+  k.m(ico(0.12, 0, COL.burlapDark, { x: -0.12, y: 0.4, z: -0.19 }));
+  k.m(rod([-0.11, 0.62, -0.17], [-0.15, 0.72, -0.1], 0.065, 0.04, 6, COL.burlapDark));
+  k.x(dodeca(0.045, SWATCH.gold, { x: -0.06, y: 0.635, z: -0.24 }));
+  k.x(dodeca(0.04, SWATCH.gold, { x: -0.17, y: 0.62, z: -0.25 }));
+  k.x(dodeca(0.035, SWATCH.gold, { x: -0.21, y: 0.56, z: -0.17 }));
   // A bundle of logs on the right shoulder.
   k.on('logs');
   for (const [x, y, z, l] of [
@@ -366,7 +377,7 @@ function buildArcher(k, tc) {
   k.on('torso');
   k.m(cyl(0.12, 0.135, 0.2, 8, COL.olive, { y: 0.47 }));
   k.m(cyl(0.142, 0.142, 0.034, 8, COL.leatherDark, { y: 0.385 }));
-  k.m(box(0.04, 0.36, 0.285, COL.leatherDark, { y: 0.48, rz: -0.72 }));
+  k.m(skirt(0.176, 0.136, 0.176, 0.136, 0.04, 12, COL.leatherDark, { y: 0.47, rz: -0.72 }));
   k.m(cyl(0.1, 0.172, 0.085, 8, tc.main, { y: 0.565 }));
   k.m(cyl(0.175, 0.175, 0.022, 8, tc.dark, { y: 0.52 }));
   k.m(cyl(0.045, 0.052, 0.05, 6, SWATCH.skinDark, { y: 0.61 }));
@@ -434,16 +445,15 @@ const KITE = [
 
 function buildKnight(k, tc) {
   k.on('horse');
-  k.m(cyl(0.148, 0.142, 0.5, 8, COL.coat, { y: 0.54, rx: HALF_PI }));
-  k.m(sphere(0.162, 8, 6, COL.coat, { y: 0.565, z: 0.22 }));
-  k.m(sphere(0.172, 8, 6, COL.coat, { y: 0.575, z: -0.22 }));
-  // Caparison: a team-colour skirt over the body with a light hem.
-  k.m(cyl(0.175, 0.218, 0.3, 10, tc.main, { y: 0.5, sz: 1.95 }));
-  k.m(cyl(0.222, 0.226, 0.04, 10, tc.light, { y: 0.36, sz: 1.95 }));
-  k.m(box(0.36, 0.03, 0.4, tc.main, { y: 0.715, z: -0.01 }));
-  k.m(box(0.37, 0.034, 0.05, tc.light, { y: 0.716, z: 0.19 }));
-  k.m(box(0.37, 0.034, 0.05, tc.light, { y: 0.716, z: -0.21 }));
-  k.m(box(0.18, 0.05, 0.22, SWATCH.leather, { y: 0.745, z: -0.02 }));
+  k.m(ico(1, 1, COL.coat, { y: 0.585, z: -0.01, sx: 0.158, sy: 0.15, sz: 0.4 }));
+  // Caparison: team cloth hanging from the back to below the belly, light hem,
+  // a lozenge on each flank.
+  k.m(skirt(0.156, 0.4, 0.222, 0.465, 0.24, 12, tc.main, { y: 0.48 }));
+  k.m(skirt(0.225, 0.469, 0.228, 0.473, 0.045, 12, tc.light, { y: 0.375 }));
+  for (const s of [1, -1]) k.m(box(0.02, 0.1, 0.1, tc.light, { x: 0.196 * s, y: 0.49, z: -0.02, rz: 0.17 * s, rx: Math.PI / 4 }));
+  k.m(box(0.31, 0.024, 0.3, tc.main, { y: 0.712, z: -0.02 }));
+  for (const z of [0.13, -0.17]) k.m(box(0.315, 0.028, 0.035, tc.light, { y: 0.713, z }));
+  k.m(box(0.19, 0.05, 0.24, SWATCH.leather, { y: 0.745, z: -0.02 }));
   k.m(box(0.17, 0.08, 0.04, COL.leatherDark, { y: 0.78, z: -0.135 }));
   k.m(box(0.1, 0.07, 0.04, COL.leatherDark, { y: 0.77, z: 0.095 }));
   k.on('neck');
@@ -473,7 +483,8 @@ function buildKnight(k, tc) {
     k.m(cyl(0.042, 0.052, 0.065, 6, COL.hoof, { x, y: 0.032, z: z + 0.008 }));
   }
   k.on('tail');
-  k.m(cyl(0.028, 0.066, 0.34, 5, COL.mane, { y: 0.47, z: -0.44, rx: 0.38 }));
+  k.m(cyl(0.035, 0.05, 0.14, 5, COL.mane, { y: 0.58, z: -0.43, rx: 0.5 }));
+  k.m(cyl(0.05, 0.075, 0.3, 6, COL.mane, { y: 0.42, z: -0.47, rx: 0.22 }));
   k.on('rider');
   k.m(box(0.19, 0.08, 0.17, COL.mail, { y: 0.785, z: -0.02 }));
   for (const s of [1, -1]) {
@@ -493,10 +504,9 @@ function buildKnight(k, tc) {
   k.m(box(0.16, 0.022, 0.04, COL.slit, { y: 1.15, z: 0.072 }));
   k.x(box(0.026, 0.1, 0.02, SWATCH.gold, { y: 1.095, z: 0.09 }));
   k.on('crest');
-  k.m(cone(0.06, 0.2, 5, tc.main, { y: 1.33, z: -0.04, rx: -0.25 }));
-  k.m(cone(0.055, 0.22, 5, tc.main, { y: 1.31, z: -0.12, rx: -0.9 }));
-  k.m(cone(0.045, 0.2, 5, tc.light, { y: 1.27, z: -0.19, rx: -1.5 }));
-  k.m(ico(0.05, 0, tc.light, { y: 1.26, z: -0.03 }));
+  k.m(cone(0.065, 0.24, 6, tc.main, { y: 1.33, z: -0.07, rx: -0.55 }));
+  k.m(cone(0.05, 0.2, 6, tc.light, { y: 1.29, z: -0.15, rx: -1.25 }));
+  k.m(ico(0.06, 0, tc.main, { y: 1.255, z: -0.03 }));
   for (const s of [1, -1]) {
     k.on(s > 0 ? 'armL' : 'armR');
     k.x(sphere(0.075, 6, 4, SWATCH.steel, { x: 0.165 * s, y: 0.985, z: -0.02, sy: 0.85 }));
@@ -704,7 +714,7 @@ function posePeasant(P, u, st, clock, dt, layer) {
   humanMotion(P, b, u, st, clock, 0.78);
   const carry = u.carry ? u.carry.type : null;
   const o = u.order;
-  const woodJob = o ? o.type === 'harvest' && o.res === 'wood' : !!u.lastHarvest && u.lastHarvest.res === 'wood';
+  const woodJob = o && o.type === 'harvest' ? o.res === 'wood' : !!u.lastHarvest && u.lastHarvest.res === 'wood';
   if (carry !== 'gold') P.hide(b.sack);
   if (carry !== 'wood') P.hide(b.logs);
   if (carry || !woodJob) P.hide(b.axe);
@@ -712,7 +722,7 @@ function posePeasant(P, u, st, clock, dt, layer) {
   P.rot(b.axe, -0.6, 0, 0);
   P.rot(b.pick, -0.6, 0, 0);
   if (carry === 'gold') {
-    P.aim(b.armR, -0.13, 0.73, -0.1, b.torso);
+    P.aim(b.armR, -0.17, 0.74, -0.08, b.torso);
     P.rot(b.torso, 0.06, 0, 0);
   } else if (carry === 'wood') {
     P.aim(b.armR, -0.23, 0.78, 0.13, b.torso);
@@ -844,11 +854,11 @@ function poseKnight(P, u, st, clock, dt, layer) {
   const b = this.b;
   const w = st.walk;
   const idle = 1 - w;
-  const ph = u.walkAnim * (TAU / 1.5);
+  const ph = u.walkAnim * (TAU / 1.1);
   const s = Math.sin(ph);
   const c = Math.cos(ph);
   // Trot: diagonal pairs swing together.
-  const A = 0.55 * w;
+  const A = 0.7 * w;
   P.rot(b.legFL, -s * A, 0, 0);
   P.rot(b.legBR, -s * A, 0, 0);
   P.rot(b.legFR, s * A, 0, 0);
@@ -856,7 +866,7 @@ function poseKnight(P, u, st, clock, dt, layer) {
   P.move(b.horse, 0, (Math.abs(c) - 0.5) * 0.05 * w, 0);
   P.rot(b.horse, Math.sin(2 * ph) * 0.035 * w, 0, 0);
   P.rot(b.neck, Math.sin(2 * ph + 0.7) * 0.09 * w - 0.05 * w, 0, 0);
-  P.rot(b.tail, 0.35 * w + 0.06 * Math.sin(2 * ph), Math.sin(clock * 1.9 + st.seed * 9) * 0.28 * (1 - 0.6 * w), 0);
+  P.rot(b.tail, 0.18 * w + 0.06 * Math.sin(2 * ph), Math.sin(clock * 1.9 + st.seed * 9) * 0.28 * (1 - 0.6 * w), 0);
   P.move(b.rider, 0, -(Math.abs(c) - 0.5) * 0.02 * w, 0);
   P.rot(b.rider, 0.06 * w, 0, 0);
   // Idle: breathing, a slow head toss now and then, a weight shift.
@@ -1048,8 +1058,8 @@ function injectRig(shader, uniforms) {
 function rigMaterial(ctx, base, key, uniforms) {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: base.roughness,
-    metalness: base.metalness,
+    roughness: Math.min(1, base.roughness * 1.1),
+    metalness: base.metalness * 0.75,
     flatShading: true,
   });
   ctx.fog.patch(mat, { key });

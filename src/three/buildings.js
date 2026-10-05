@@ -29,7 +29,6 @@ const FACE_RY = { S: 0, N: Math.PI, E: Math.PI / 2, W: -Math.PI / 2 };
 
 const GLOW = {
   win: '#ffc65a',
-  winDeep: '#ff9f45',
   flame: '#ffe08a',
   flameCore: '#ffb347',
   forge: '#ff7a1e',
@@ -38,7 +37,12 @@ const GLOW = {
   lantern: '#ffcc66',
 };
 
-const HEIGHT = { townhall: 3.25, farm: 1.35, barracks: 2.15, lumbermill: 1.85, blacksmith: 2.35, tower: 3.15, goldmine: 1.45 };
+const WALL = mix(C.stone, C.stoneLight, 0.35);
+const QUOIN = mix(C.stoneLight, C.plaster, 0.35);
+
+// Top of the roof, spire or flag, for picking and health bars.
+const HEIGHT = { townhall: 3.25, farm: 1.45, barracks: 2.15, lumbermill: 2.0, blacksmith: 2.35, tower: 3.15, goldmine: 1.45 };
+const heightOf = (type) => HEIGHT[type] || (BUILDINGS[type]?.size || 2) * 0.75;
 
 // ---- geometry helpers ------------------------------------------------------
 
@@ -158,6 +162,18 @@ function plinth(p, w, d, o = {}) {
   const depth = 0.5;
   p.body.push(box(w, top + depth, d, o.color || C.stoneDark, { y: (top - depth) / 2 }));
   p.body.push(box(w + 0.02, 0.045, d + 0.02, o.cap || mix(C.stone, C.stoneDark, 0.35), { y: top - 0.022 }));
+  // Flagstones on exposed parts of the plinth top: [x0, x1, z0, z1] areas.
+  for (const [ax0, ax1, az0, az1] of o.paving || []) {
+    for (let zz = az0; zz < az1 - 0.05; zz += 0.2) {
+      let xx = ax0 + p.rnd() * 0.12;
+      while (xx < ax1 - 0.08) {
+        const len = Math.min(ax1 - xx, 0.2 + p.rnd() * 0.2);
+        const dz = Math.min(az1 - zz, 0.2);
+        p.body.push(box(len - 0.03, 0.02, dz - 0.03, mix(C.stone, C.stoneLight, p.rnd() * 0.6), { x: xx + len / 2, y: top + 0.008, z: zz + dz / 2 }));
+        xx += len;
+      }
+    }
+  }
   if (o.rocks === false) return;
   // Footing stones where the plinth meets the ground (front and sides).
   const edges = [
@@ -170,8 +186,8 @@ function plinth(p, w, d, o = {}) {
     for (let i = 0; i < n; i++) {
       const a = -len / 2 + ((i + 0.3 + p.rnd() * 0.4) / n) * len;
       const [x, z] = fpos(face, 0, 0, a, off);
-      const r = 0.06 + p.rnd() * 0.05;
-      p.body.push(dodeca(r, p.rnd() > 0.5 ? C.rock : C.rockDark, { x, y: 0.01, z, sy: 0.7, ry: p.rnd() * 3 }));
+      const r = 0.05 + p.rnd() * 0.04;
+      p.body.push(dodeca(r, p.rnd() > 0.5 ? C.rock : C.rockDark, { x: x * 0.985, y: 0.01, z: z * 0.985, sy: 0.7, ry: p.rnd() * 3 }));
     }
   }
 }
@@ -201,8 +217,8 @@ function quoins(p, corners, y0, y1) {
     let k = 0;
     for (let y = y0; y + 0.1 < y1; y += 0.14, k++) {
       const shade = (p.rnd() - 0.5) * 0.14;
-      if (k % 2) p.body.push(box(0.2, 0.115, 0.1, C.stoneLight, { x: cx - sx * 0.085, y: y + 0.06, z: cz - sz * 0.035, shade }));
-      else p.body.push(box(0.1, 0.115, 0.2, C.stoneLight, { x: cx - sx * 0.035, y: y + 0.06, z: cz - sz * 0.085, shade }));
+      if (k % 2) p.body.push(box(0.2, 0.115, 0.1, QUOIN, { x: cx - sx * 0.085, y: y + 0.06, z: cz - sz * 0.035, shade }));
+      else p.body.push(box(0.1, 0.115, 0.2, QUOIN, { x: cx - sx * 0.035, y: y + 0.06, z: cz - sz * 0.085, shade }));
     }
   }
 }
@@ -214,7 +230,7 @@ function stoneWalls(p, x0, x1, z0, z1, y0, y1, o = {}) {
   const h = y1 - y0;
   const cx = (x0 + x1) / 2;
   const cz = (z0 + z1) / 2;
-  const col = o.color || C.stone;
+  const col = o.color || WALL;
   p.body.push(box(w, h, d, col, { x: cx, y: y0 + h / 2, z: cz }));
   if (!o.noBase) p.body.push(box(w + 0.04, 0.1, d + 0.04, C.stoneDark, { x: cx, y: y0 + 0.05, z: cz }));
   if (!o.noTop) p.body.push(box(w + 0.06, 0.065, d + 0.06, C.stoneLight, { x: cx, y: y1 - 0.032, z: cz, shade: -0.04 }));
@@ -308,7 +324,7 @@ function plankWalls(p, x0, x1, z0, z1, y0, y1) {
 /** Gabled roof with shingle courses. Ridge along local X; base at y; rotated by ry. */
 function gableRoof(p, o) {
   const { x = 0, y = 0, z = 0, w, d, h, color, ry = 0, rows = 4, oh = 0.1, end = C.stone, trim = C.woodDark, t = 0.045, list = p.body } = o;
-  const alt = o.alt || mix(color, '#000000', 0.12);
+  const alt = o.alt || mix(color, '#000000', 0.2);
   const g = [];
   const a = Math.atan2(h, d / 2);
   const L = Math.hypot(h, d / 2);
@@ -321,16 +337,18 @@ function gableRoof(p, o) {
       const s1 = ((i + 1) / rows) * L;
       const len = s1 - s0 + 0.07;
       const s = (s0 + s1) / 2;
-      const off = t / 2 + 0.004;
-      g.push(box(w, t, len, i % 2 ? alt : color, { y: s * sa + ca * off, z: side * (d / 2 - s * ca + sa * off), rx: side * (a - 0.05) }));
+      const off = t / 2 + 0.004 + (rows - i) * 0.004;
+      g.push(box(w, t, len, i % 2 ? alt : color, { y: s * sa + ca * off, z: side * (d / 2 - s * ca + sa * off), rx: side * (a - 0.07) }));
     }
+    // Fascia along the eave.
+    g.push(box(w + 0.01, 0.05, 0.035, o.fascia || mix(color, '#000000', 0.45), { y: -0.005, z: side * (d / 2 + 0.005) }));
   }
-  g.push(box(w + 0.04, o.ridgeSize || 0.085, o.ridgeSize || 0.085, o.ridge || alt, { y: h + 0.015, rx: Math.PI / 4 }));
+  g.push(box(w + 0.04, o.ridgeSize || 0.085, o.ridgeSize || 0.085, o.ridge || mix(color, '#000000', 0.35), { y: h + 0.015, rx: Math.PI / 4 }));
   if (trim) {
     for (const sx of [-1, 1]) {
       for (const side of [1, -1]) {
         const s = L / 2;
-        const off = t + 0.012;
+        const off = t + 0.02;
         g.push(box(0.05, 0.065, L + 0.03, trim, { x: sx * (w / 2 - 0.012), y: s * sa + ca * off * 0.5, z: side * (d / 2 - s * ca + sa * off * 0.5), rx: side * a }));
       }
     }
@@ -343,21 +361,22 @@ function gableRoof(p, o) {
 
 /** Hipped roof built from overlapping courses; base w x d at y. */
 function hipRoof(p, o) {
-  const { x = 0, y = 0, z = 0, w, d, h, color, rows = 4, flare = 0.04, list = p.body } = o;
-  const alt = o.alt || mix(color, '#000000', 0.12);
+  const { x = 0, y = 0, z = 0, w, d, h, color, rows = 4, flare = 0.055, list = p.body } = o;
+  const alt = o.alt || mix(color, '#000000', 0.2);
   const m = Math.min(w, d) / 2;
   const g = [];
+  g.push(frustum(w + 0.02, d + 0.02, w - 0.02, d - 0.02, 0.05, o.fascia || mix(color, '#000000', 0.45), { y: -0.03 }));
   for (let i = 0; i < rows; i++) {
     const f0 = i / rows;
     const f1 = (i + 1) / rows;
     const fl = i === 0 ? 0 : flare;
-    const drop = i === 0 ? 0 : 0.014;
+    const drop = i === 0 ? 0 : 0.02;
     g.push(frustum(w - 2 * m * f0 + 2 * fl, d - 2 * m * f0 + 2 * fl, w - 2 * m * f1, d - 2 * m * f1, h * (f1 - f0) + drop, i % 2 ? alt : color, { y: h * f0 - drop }));
   }
   if (Math.abs(w - d) > 0.02) {
     const along = w > d;
-    const len = Math.abs(w - d) + 0.06;
-    g.push(box(along ? len : 0.07, 0.07, along ? 0.07 : len, o.ridge || alt, { y: h + 0.005, rx: along ? Math.PI / 4 : 0, rz: along ? 0 : Math.PI / 4 }));
+    const len = Math.abs(w - d) + 0.08;
+    g.push(box(along ? len : 0.085, 0.085, along ? 0.085 : len, o.ridge || mix(color, '#000000', 0.35), { y: h + 0.005, rx: along ? Math.PI / 4 : 0, rz: along ? 0 : Math.PI / 4 }));
   }
   const geo = merge(g);
   geo.translate(x, y, z);
@@ -366,13 +385,14 @@ function hipRoof(p, o) {
 
 /** Conical roof in courses; base radius r at y. */
 function coneRoof(p, o) {
-  const { x = 0, y = 0, z = 0, r, h, color, rows = 3, segs = 10, flare = 0.035, list = p.body } = o;
-  const alt = o.alt || mix(color, '#000000', 0.12);
+  const { x = 0, y = 0, z = 0, r, h, color, rows = 3, segs = 10, flare = 0.045, list = p.body } = o;
+  const alt = o.alt || mix(color, '#000000', 0.2);
+  list.push(cyl(r + 0.01, r + 0.01, 0.05, segs, mix(color, '#000000', 0.45), { x, y: y - 0.005, z, ry: Math.PI / segs }));
   for (let i = 0; i < rows; i++) {
     const f0 = i / rows;
     const f1 = (i + 1) / rows;
     const fl = i === 0 ? 0 : flare;
-    const drop = i === 0 ? 0 : 0.014;
+    const drop = i === 0 ? 0 : 0.02;
     const th = h * (f1 - f0) + drop;
     list.push(cyl(r * (1 - f1), r * (1 - f0) + fl, th, segs, i % 2 ? alt : color, { x, y: y + h * f0 - drop + th / 2, z, ry: Math.PI / segs }));
   }
@@ -511,7 +531,14 @@ function shieldShape(w, h) {
 
 function buildTownhall(p) {
   const tc = p.tc;
-  plinth(p, 3.8, 3.8);
+  plinth(p, 3.8, 3.8, {
+    paving: [
+      [-1.86, -0.47, 1.4, 1.87],
+      [0.47, 1.86, 1.4, 1.87],
+      [-1.86, -1.38, -1.05, 0.6],
+      [1.38, 1.86, -1.05, 0.6],
+    ],
+  });
   // Main hall.
   const hx0 = -1.35;
   const hx1 = 1.35;
@@ -519,7 +546,7 @@ function buildTownhall(p) {
   const hz1 = 0.95;
   const top = 1.3;
   stoneWalls(p, hx0, hx1, hz0, hz1, PT, top, { density: 0.32 });
-  hipRoof(p, { z: (hz0 + hz1) / 2, y: top - 0.03, w: 2.98, d: 2.68, h: 0.86, color: tc.main, rows: 4 });
+  hipRoof(p, { z: (hz0 + hz1) / 2, y: top - 0.03, w: 2.98, d: 2.68, h: 0.86, color: tc.main, rows: 5 });
   // Central keep with a tall spire.
   const kz = -0.32;
   stoneWalls(p, -0.58, 0.58, kz - 0.58, kz + 0.58, 1.3, 2.35, { noBase: true, density: 0.35, frontQuoins: true });
@@ -533,21 +560,24 @@ function buildTownhall(p) {
   windowAt(p, 'E', 0.58, 2.05, kz, 0.15, 0.24, { arch: true });
   // Corner turrets.
   for (const [tx, tz] of [
-    [-1.42, -1.5],
-    [1.42, -1.5],
+    [-1.42, -1.42],
+    [1.42, -1.42],
     [-1.42, 1.0],
     [1.42, 1.0],
   ]) {
-    p.body.push(cyl(0.34, 0.37, 1.58, 10, C.stone, { x: tx, y: PT + 0.79, z: tz }));
+    p.body.push(cyl(0.34, 0.37, 1.58, 10, WALL, { x: tx, y: PT + 0.79, z: tz }));
     p.body.push(cyl(0.385, 0.385, 0.09, 10, C.stoneDark, { x: tx, y: PT + 0.05, z: tz }));
-    for (const yy of [0.62, 1.08]) p.body.push(cyl(0.355, 0.36, 0.04, 10, C.stoneLight, { x: tx, y: yy, z: tz, shade: -0.06 }));
-    p.body.push(cyl(0.42, 0.35, 0.12, 10, C.stoneLight, { x: tx, y: 1.69, z: tz }));
-    coneRoof(p, { x: tx, z: tz, y: 1.74, r: 0.47, h: 0.72, color: tc.main, rows: 3 });
+    for (const yy of [0.62, 1.08]) p.body.push(cyl(0.358, 0.363, 0.045, 10, QUOIN, { x: tx, y: yy, z: tz }));
+    p.body.push(cyl(0.42, 0.35, 0.12, 10, QUOIN, { x: tx, y: 1.69, z: tz }));
+    coneRoof(p, { x: tx, z: tz, y: 1.74, r: 0.45, h: 0.72, color: tc.main, rows: 3 });
     p.body.push(ico(0.04, 0, C.gold, { x: tx, y: 2.49, z: tz }));
     if (tz > 0) {
-      const face = 'S';
-      windowAt(p, face, tx, 1.2, tz + 0.345, 0.06, 0.2, { sill: false, frame: C.stoneDark });
-      windowAt(p, tx < 0 ? 'W' : 'E', tx + (tx < 0 ? -0.345 : 0.345), 0.85, tz, 0.06, 0.18, { sill: false, frame: C.stoneDark });
+      // Banners hang on the front turrets, where the camera sees them.
+      bannerAt(p, 'S', tx, 1.5, tz + 0.345, 0.26, 0.62, tc, { out: 0.03 });
+      windowAt(p, tx < 0 ? 'W' : 'E', tx + (tx < 0 ? -0.345 : 0.345), 1.2, tz, 0.06, 0.2, { sill: false, frame: C.stoneDark });
+      windowAt(p, tx < 0 ? 'W' : 'E', tx + (tx < 0 ? -0.35 : 0.35), 0.6, tz, 0.06, 0.18, { sill: false, frame: C.stoneDark });
+    } else {
+      windowAt(p, tx < 0 ? 'W' : 'E', tx + (tx < 0 ? -0.345 : 0.345), 1.2, tz, 0.06, 0.2, { sill: false, frame: C.stoneDark });
     }
   }
   // Entrance porch with the great door.
@@ -559,9 +589,9 @@ function buildTownhall(p) {
   torchAt(p, 'S', -0.4, 0.78, 1.5);
   torchAt(p, 'S', 0.4, 0.78, 1.5);
   p.body.push(box(0.9, 0.06, 0.22, C.stoneLight, { y: PT + 0.03, z: 1.72, shade: -0.08 }));
-  // Banners either side of the porch.
-  bannerAt(p, 'S', -0.82, 1.18, hz1, 0.26, 0.56, tc);
-  bannerAt(p, 'S', 0.82, 1.18, hz1, 0.26, 0.56, tc);
+  // Windows either side of the porch.
+  windowAt(p, 'S', -0.8, 0.72, hz1, 0.16, 0.26, { arch: true });
+  windowAt(p, 'S', 0.8, 0.72, hz1, 0.16, 0.26, { arch: true });
   // Side windows.
   for (const wz of [-0.8, -0.25, 0.3]) {
     windowAt(p, 'W', hx0, 0.78, wz, 0.17, 0.26, { arch: true });
@@ -589,31 +619,30 @@ function buildFarm(p) {
   const z0 = -0.86;
   const z1 = -0.1;
   timberWalls(p, x0, x1, z0, z1, PT, 0.68, { fill: C.plaster });
-  gableRoof(p, {
+  hipRoof(p, {
     x: (x0 + x1) / 2,
     z: (z0 + z1) / 2,
     y: 0.64,
-    w: 1.46,
-    d: 1.06,
-    h: 0.58,
+    w: 1.44,
+    d: 1.0,
+    h: 0.62,
     color: C.thatch,
-    alt: mix(C.thatch, C.thatchDark, 0.45),
+    alt: mix(C.thatch, C.thatchDark, 0.5),
     ridge: C.thatchDark,
-    ridgeSize: 0.12,
-    end: C.plaster,
+    fascia: C.thatchDark,
     rows: 4,
-    t: 0.07,
-    trim: null,
+    flare: 0.07,
   });
   doorAt(p, 'S', -0.06, z1, 0.24, 0.4, { color: tc.dark, frame: C.woodDark, step: C.stone });
   windowAt(p, 'S', -0.52, 0.42, z1, 0.15, 0.15, { shutters: tc.main, sillColor: C.woodLight });
   windowAt(p, 'S', 0.24, 0.42, z1, 0.12, 0.15, { shutters: tc.main, sillColor: C.woodLight });
   windowAt(p, 'W', x0, 0.42, (z0 + z1) / 2, 0.15, 0.15, { shutters: tc.main, sillColor: C.woodLight });
   chimneyAt(p, 0.3, -0.62, 0.5, 1.32, 0.17, 0.2);
-  // Pennant on the west gable.
-  p.body.push(cyl(0.012, 0.016, 0.42, 5, C.woodDark, { x: -0.92, y: 1.12, z: (z0 + z1) / 2 }));
-  p.body.push(ico(0.025, 0, C.gold, { x: -0.92, y: 1.34, z: (z0 + z1) / 2 }));
-  flagAt(p, -0.92, 1.32, (z0 + z1) / 2, 0.3, 0.13, tc.main, { shape: 'pennant' });
+  // Pennant on the west end of the ridge.
+  const rx = (x0 + x1) / 2 - 0.22;
+  p.body.push(cyl(0.012, 0.016, 0.26, 5, C.woodDark, { x: rx, y: 1.32, z: (z0 + z1) / 2 }));
+  p.body.push(ico(0.025, 0, C.gold, { x: rx, y: 1.45, z: (z0 + z1) / 2 }));
+  flagAt(p, rx, 1.43, (z0 + z1) / 2, 0.27, 0.12, tc.main, { shape: 'pennant' });
   // Field: tilled soil with rows of wheat and cabbages.
   const soil = '#6b4a2b';
   p.body.push(box(1.62, 0.06, 0.78, soil, { y: 0.08, z: 0.46 }));
@@ -683,7 +712,7 @@ function buildFarm(p) {
 
 function buildBarracks(p) {
   const tc = p.tc;
-  plinth(p, 2.82, 2.82);
+  plinth(p, 2.82, 2.82, { paving: [[0.66, 1.4, 0.52, 1.4]] });
   p.body.push(box(2.0, 0.02, 1.18, mix(C.dirt, C.stone, 0.2), { x: -0.33, y: PT + 0.01, z: 0.78 }));
   // Long hall.
   const x0 = -1.32;
@@ -692,7 +721,7 @@ function buildBarracks(p) {
   const z1 = 0.1;
   const top = 1.05;
   stoneWalls(p, x0, x1, z0, z1, PT, top, { density: 0.36 });
-  gableRoof(p, { z: (z0 + z1) / 2, y: top - 0.03, w: 2.86, d: 1.78, h: 0.78, color: tc.main, end: C.stone, rows: 4 });
+  hipRoof(p, { z: (z0 + z1) / 2, y: top - 0.03, w: 2.84, d: 1.7, h: 0.8, color: tc.main, rows: 4 });
   // Cross gable over the door with the crossed-swords emblem.
   const gx = -0.3;
   const gz1 = z1 + 0.3;
@@ -701,7 +730,7 @@ function buildBarracks(p) {
   doorAt(p, 'S', gx, gz1, 0.46, 0.6, { double: true });
   const ey = top + 0.25;
   for (const s of [-1, 1]) {
-    p.metal.push(box(0.035, 0.5, 0.012, C.steel, { x: gx, y: ey + 0.02, z: gz1 + 0.04, rz: s * 0.78 }));
+    p.body.push(box(0.035, 0.5, 0.012, C.steel, { x: gx, y: ey + 0.02, z: gz1 + 0.04, rz: s * 0.78 }));
     p.body.push(box(0.15, 0.03, 0.03, C.gold, { x: gx + s * 0.13, y: ey - 0.13, z: gz1 + 0.045, rz: -s * 0.78 }));
     p.body.push(box(0.03, 0.08, 0.03, C.leather, { x: gx + s * 0.165, y: ey - 0.175, z: gz1 + 0.045, rz: s * 0.78 }));
   }
@@ -746,11 +775,29 @@ function buildBarracks(p) {
     const wx = -1.08 + i * 0.155;
     if (i % 2 === 0) {
       p.body.push(cyl(0.012, 0.012, 0.62, 4, C.woodLight, { x: wx, y: PT + 0.33, z: rz + 0.04, rx: -0.12 }));
-      p.metal.push(cone(0.03, 0.1, 4, C.steel, { x: wx, y: PT + 0.68, z: rz + 0.0, rx: -0.12 }));
+      p.body.push(cone(0.03, 0.1, 4, C.steel, { x: wx, y: PT + 0.68, z: rz + 0.0, rx: -0.12 }));
     } else {
-      p.metal.push(box(0.04, 0.34, 0.012, C.steel, { x: wx, y: PT + 0.3, z: rz + 0.045, rx: -0.12 }));
+      p.body.push(box(0.04, 0.34, 0.012, C.steel, { x: wx, y: PT + 0.3, z: rz + 0.045, rx: -0.12 }));
       p.body.push(box(0.12, 0.025, 0.03, C.gold, { x: wx, y: PT + 0.48, z: rz + 0.03 }));
       p.body.push(box(0.025, 0.08, 0.025, C.leather, { x: wx, y: PT + 0.53, z: rz + 0.025 }));
+    }
+  }
+  // Archery butt and barrels in front of the watchtower.
+  {
+    const ax = 1.02;
+    const az = 0.98;
+    for (const s of [-1, 1]) p.body.push(box(0.04, 0.42, 0.04, C.woodDark, { x: ax + s * 0.14, y: PT + 0.2, z: az - 0.08, rx: -0.25 }));
+    p.body.push(cyl(0.2, 0.2, 0.12, 10, C.thatch, { x: ax, y: PT + 0.34, z: az, rx: Math.PI / 2 - 0.25 }));
+    p.body.push(cyl(0.14, 0.14, 0.13, 10, tc.main, { x: ax, y: PT + 0.34, z: az + 0.005, rx: Math.PI / 2 - 0.25 }));
+    p.body.push(cyl(0.085, 0.085, 0.14, 10, C.plaster, { x: ax, y: PT + 0.34, z: az + 0.01, rx: Math.PI / 2 - 0.25 }));
+    p.body.push(cyl(0.035, 0.035, 0.15, 8, tc.dark, { x: ax, y: PT + 0.34, z: az + 0.015, rx: Math.PI / 2 - 0.25 }));
+    for (const [bx, bz] of [
+      [0.82, 0.62],
+      [1.22, 0.64],
+    ]) {
+      p.body.push(cyl(0.1, 0.09, 0.22, 8, C.wood, { x: bx, y: PT + 0.11, z: bz }));
+      p.body.push(cyl(0.103, 0.103, 0.02, 8, C.ironDark, { x: bx, y: PT + 0.16, z: bz }));
+      p.body.push(cyl(0.095, 0.095, 0.01, 8, C.woodDark, { x: bx, y: PT + 0.22, z: bz }));
     }
   }
   // Training dummy.
@@ -761,7 +808,6 @@ function buildBarracks(p) {
   p.body.push(box(0.4, 0.035, 0.035, C.wood, { x: dx, y: PT + 0.5, z: dz }));
   p.body.push(ico(0.07, 0, C.thatchDark, { x: dx, y: PT + 0.63, z: dz }));
   p.body.push(prism(shieldShape(0.13, 0.16), 0.025, tc.main, { x: dx - 0.2, y: PT + 0.44, z: dz + 0.03 }));
-  p.metal.push(box(0.012, 0.012, 0.012, C.steel, { x: dx, y: PT + 0.63, z: dz }));
   // Banners at the yard gate.
   for (const bx of [-1.22, 0.5]) {
     const bz = 1.25;
@@ -778,110 +824,129 @@ function buildLumbermill(p) {
   const tc = p.tc;
   plinth(p, 2.82, 2.82, { color: mix(C.stoneDark, C.dirt, 0.3) });
   p.body.push(box(2.7, 0.02, 1.25, mix(C.dirt, '#d9b77a', 0.25), { y: PT + 0.01, z: 0.72 }));
-  // Timber hall.
-  const x0 = -1.32;
+  // Timber hall, gable end to the front.
+  const x0 = -1.28;
   const x1 = 0.42;
   const z0 = -1.32;
   const z1 = 0.0;
   const top = 1.0;
+  const cx = (x0 + x1) / 2;
   plankWalls(p, x0, x1, z0, z1, PT, top);
-  gableRoof(p, { x: (x0 + x1) / 2, z: (z0 + z1) / 2, y: top - 0.03, w: 2.0, d: 1.66, h: 0.72, color: tc.main, end: C.woodLight, rows: 4 });
-  // Barn door with a Z brace.
-  const dx = -0.6;
+  gableRoof(p, { x: cx, z: -0.66, y: top - 0.03, w: 1.56, d: 1.96, h: 0.86, ry: Math.PI / 2, oh: 0.12, color: tc.main, end: C.woodLight, rows: 4 });
+  // Gable end: boards, loft door and hoist beam with a rope.
+  for (let i = -3; i <= 3; i += 2) {
+    const hgt = 0.86 * (1 - Math.abs(i * 0.13) / 1.0) - 0.08;
+    p.body.push(box(0.11, hgt, 0.02, C.woodLight, { x: cx + i * 0.13, y: top + hgt / 2, z: z1 + 0.012, shade: (p.rnd() - 0.5) * 0.15 }));
+  }
+  p.body.push(box(0.36, 0.34, 0.04, C.woodDark, { x: cx, y: top + 0.24, z: z1 + 0.02 }));
+  p.body.push(box(0.28, 0.27, 0.03, C.wood, { x: cx, y: top + 0.23, z: z1 + 0.035 }));
+  p.body.push(box(0.016, 0.27, 0.02, C.woodDark, { x: cx, y: top + 0.23, z: z1 + 0.05 }));
+  p.body.push(box(0.07, 0.07, 0.42, C.woodDark, { x: cx, y: top + 0.52, z: z1 + 0.15 }));
+  p.body.push(box(0.012, 0.36, 0.012, C.thatchDark, { x: cx, y: top + 0.32, z: z1 + 0.32 }));
+  p.body.push(box(0.05, 0.06, 0.02, C.ironDark, { x: cx, y: top + 0.12, z: z1 + 0.32 }));
+  // Barn door with a Z brace, and windows.
+  const dx = cx;
   p.body.push(box(0.6, 0.66, 0.035, C.woodDark, { x: dx, y: PT + 0.33, z: z1 + 0.018 }));
   p.body.push(box(0.52, 0.6, 0.03, C.wood, { x: dx, y: PT + 0.31, z: z1 + 0.04 }));
   for (const yy of [0.12, 0.5]) p.body.push(box(0.52, 0.05, 0.02, C.woodDark, { x: dx, y: PT + yy, z: z1 + 0.06 }));
   p.body.push(box(0.6, 0.045, 0.02, C.woodDark, { x: dx, y: PT + 0.31, z: z1 + 0.06, rz: 0.62 }));
   p.body.push(box(0.016, 0.6, 0.02, C.woodDark, { x: dx, y: PT + 0.31, z: z1 + 0.062 }));
-  windowAt(p, 'S', 0.08, 0.6, z1, 0.18, 0.2, {});
+  windowAt(p, 'S', -1.06, 0.6, z1, 0.17, 0.2, {});
+  windowAt(p, 'S', 0.17, 0.6, z1, 0.17, 0.2, {});
   windowAt(p, 'W', x0, 0.6, -0.66, 0.18, 0.2, {});
-  // Hay-loft door and hoist beam on the gable.
-  p.body.push(box(0.12, 0.05, 0.5, C.woodDark, { x: x0 - 0.02, y: 1.42, z: -0.66 + 0.0 }));
-  // Open saw shed on the east side.
-  const sx0 = 0.48;
-  const sx1 = 1.34;
+  // Open saw shed (lean-to) on the east side.
+  const sx1 = 1.36;
   const sz0 = -1.3;
-  const sz1 = -0.1;
-  for (const [px, pz] of [
-    [sx1 - 0.04, sz0 + 0.04],
-    [sx1 - 0.04, sz1],
-  ]) {
-    p.body.push(box(0.08, 0.88, 0.08, C.woodDark, { x: px, y: PT + 0.44, z: pz }));
-  }
-  const la = Math.atan2(0.25, sx1 - x1);
-  p.body.push(box(sx1 - x1 + 0.16, 0.05, sz1 - sz0 + 0.22, C.woodLight, { x: (x1 + sx1) / 2 + 0.04, y: 1.0, z: (sz0 + sz1) / 2, rz: -la }));
+  const sz1 = -0.08;
+  for (const pz of [sz0 + 0.05, (sz0 + sz1) / 2, sz1 - 0.02]) p.body.push(box(0.08, 0.62, 0.08, C.woodDark, { x: sx1 - 0.06, y: PT + 0.31, z: pz }));
+  const run = sx1 - x1 + 0.06;
+  const la = Math.atan2(0.24, run);
+  const slope = Math.hypot(run, 0.24) + 0.08;
+  const depth = sz1 - sz0 + 0.2;
+  const shed = [box(slope, 0.05, depth, C.wood, { rz: -la })];
   for (let i = 0; i < 4; i++) {
-    p.body.push(box(sx1 - x1 + 0.16, 0.012, 0.025, C.woodDark, { x: (x1 + sx1) / 2 + 0.04, y: 1.03, z: sz0 - 0.08 + i * 0.4 + 0.12, rz: -la }));
+    const u = -slope / 2 + ((i + 0.5) * slope) / 4;
+    shed.push(box(slope / 4 + 0.03, 0.035, depth + 0.02, i % 2 ? C.woodLight : mix(C.woodLight, C.wood, 0.45), { x: u * Math.cos(la), y: -u * Math.sin(la) + 0.035, rz: -la - 0.06 }));
   }
+  shed.push(box(0.05, 0.08, depth + 0.02, C.woodDark, { x: (slope / 2) * Math.cos(la), y: -(slope / 2) * Math.sin(la), rz: -la }));
+  {
+    const g = merge(shed);
+    g.translate((x1 + sx1) / 2 + 0.03, 0.83, (sz0 + sz1) / 2);
+    p.body.push(g);
+  }
+  p.body.push(box(sx1 - x1, 0.05, 0.05, C.woodDark, { x: (x1 + sx1) / 2, y: 0.76, z: sz1 - 0.02 }));
   // Lumber stacks under the shed.
   for (let k = 0; k < 4; k++) {
     for (let i = 0; i < 3; i++) {
       const shade = (p.rnd() - 0.5) * 0.2;
-      if (k % 2 === 0) p.body.push(box(0.6, 0.06, 0.11, C.woodLight, { x: 0.92, y: PT + 0.03 + k * 0.065, z: -0.95 + i * 0.13, shade }));
-      else p.body.push(box(0.11, 0.06, 0.4, C.woodLight, { x: 0.72 + i * 0.2, y: PT + 0.03 + k * 0.065, z: -0.82, shade }));
+      if (k % 2 === 0) p.body.push(box(0.6, 0.06, 0.11, C.woodLight, { x: 0.9, y: PT + 0.03 + k * 0.065, z: -0.92 + i * 0.13, shade }));
+      else p.body.push(box(0.11, 0.06, 0.4, C.woodLight, { x: 0.7 + i * 0.2, y: PT + 0.03 + k * 0.065, z: -0.79, shade }));
     }
   }
-  // Saw bench and the big saw blade (spins).
-  const bz = 0.62;
-  p.body.push(box(1.32, 0.07, 0.36, C.wood, { x: 0.62, y: 0.46, z: bz }));
-  for (const lx of [0.02, 1.22]) for (const lz of [-0.13, 0.13]) p.body.push(box(0.06, 0.34, 0.06, C.woodDark, { x: lx, y: PT + 0.16, z: bz + lz }));
-  p.body.push(box(1.2, 0.04, 0.05, C.woodDark, { x: 0.62, y: 0.25, z: bz }));
-  p.body.push(cyl(0.11, 0.11, 0.62, 8, C.bark, { x: 0.22, y: 0.6, z: bz, rz: Math.PI / 2 }));
-  p.body.push(cyl(0.1, 0.1, 0.012, 8, C.woodLight, { x: -0.095, y: 0.6, z: bz, rz: Math.PI / 2 }));
-  p.body.push(cyl(0.1, 0.1, 0.012, 8, C.woodLight, { x: 0.535, y: 0.6, z: bz, rz: Math.PI / 2 }));
-  p.body.push(box(0.3, 0.06, 0.2, C.woodLight, { x: 1.05, y: 0.52, z: bz, shade: 0.05 }));
-  // Blade guard posts.
-  for (const s of [-1, 1]) p.body.push(box(0.04, 0.5, 0.04, C.woodDark, { x: 0.78 + s * 0.48, y: 0.72, z: bz - 0.2 }));
-  p.body.push(box(1.0, 0.05, 0.05, C.woodDark, { x: 0.78, y: 0.98, z: bz - 0.2 }));
+  // Saw bench with a log, and the big saw blade (spins).
+  const bz = 0.64;
+  p.body.push(box(1.36, 0.07, 0.36, C.wood, { x: 0.6, y: 0.47, z: bz }));
+  for (const lx of [-0.02, 1.22]) for (const lz of [-0.13, 0.13]) p.body.push(box(0.06, 0.34, 0.06, C.woodDark, { x: lx, y: PT + 0.17, z: bz + lz }));
+  p.body.push(box(1.2, 0.04, 0.05, C.woodDark, { x: 0.6, y: 0.27, z: bz }));
+  p.body.push(cyl(0.12, 0.12, 0.6, 8, C.bark, { x: 0.12, y: 0.62, z: bz, rz: Math.PI / 2 }));
+  p.body.push(cyl(0.11, 0.11, 0.012, 8, C.woodLight, { x: -0.185, y: 0.62, z: bz, rz: Math.PI / 2 }));
+  p.body.push(cyl(0.11, 0.11, 0.012, 8, C.woodLight, { x: 0.425, y: 0.62, z: bz, rz: Math.PI / 2 }));
+  p.body.push(box(0.34, 0.06, 0.22, C.woodLight, { x: 1.06, y: 0.535, z: bz, shade: 0.05 }));
+  for (const s of [-1, 1]) p.body.push(box(0.05, 0.62, 0.05, C.woodDark, { x: 0.78 + s * 0.56, y: 0.78, z: bz - 0.22 }));
+  p.body.push(box(1.18, 0.06, 0.06, C.woodDark, { x: 0.78, y: 1.08, z: bz - 0.22 }));
+  p.body.push(box(0.05, 0.05, 0.24, C.woodDark, { x: 0.78, y: 1.08, z: bz - 0.11 }));
   const blade = [];
-  const R = 0.4;
-  blade.push(cyl(R, R, 0.022, 22, C.steel, { rx: Math.PI / 2 }));
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * TAU;
-    blade.push(prism([[0, 0], [0.075, 0], [0, 0.06]], 0.022, C.steel, { x: Math.cos(a) * (R - 0.01), y: Math.sin(a) * (R - 0.01), rz: a + Math.PI / 2 }));
+  const R = 0.46;
+  blade.push(cyl(R, R, 0.024, 24, C.steel, { rx: Math.PI / 2 }));
+  blade.push(cyl(R * 0.72, R * 0.72, 0.03, 24, mix(C.steel, C.iron, 0.5), { rx: Math.PI / 2 }));
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * TAU;
+    blade.push(prism([[0, 0], [0.085, 0], [0, 0.07]], 0.024, C.steel, { x: Math.cos(a) * (R - 0.012), y: Math.sin(a) * (R - 0.012), rz: a + Math.PI / 2 }));
   }
-  blade.push(cyl(0.085, 0.085, 0.05, 8, C.ironDark, { rx: Math.PI / 2 }));
+  blade.push(cyl(0.1, 0.1, 0.06, 8, C.ironDark, { rx: Math.PI / 2 }));
+  blade.push(cyl(0.04, 0.04, 0.07, 6, C.gold, { rx: Math.PI / 2 }));
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * TAU;
-    blade.push(box(0.2, 0.025, 0.03, C.ironDark, { x: Math.cos(a) * 0.2, y: Math.sin(a) * 0.2, rz: a }));
+    blade.push(box(0.22, 0.03, 0.036, C.ironDark, { x: Math.cos(a) * 0.21, y: Math.sin(a) * 0.21, rz: a }));
   }
   p.spin.push(merge(blade));
-  p.spinAt = [0.78, 0.5, bz];
-  p.fx.saw = [0.78 + 0.3, 0.55, bz];
+  p.spinAt = [0.78, 0.52, bz];
+  p.fx.saw = [0.78 + 0.36, 0.56, bz];
   // Log piles.
-  const pile = (cx, cz, n, len) => {
+  const pile = (cx2, cz2, n, len) => {
     let k = 0;
     for (let layer = 0; layer < n; layer++) {
       for (let i = 0; i < n - layer; i++, k++) {
         const r = 0.11 + p.rnd() * 0.015;
-        const z = cz + (i - (n - layer - 1) / 2) * 0.23;
+        const z = cz2 + (i - (n - layer - 1) / 2) * 0.23;
         const y = PT + r + layer * 0.19;
         const l = len - p.rnd() * 0.12;
-        p.body.push(cyl(r, r, l, 7, k % 2 ? C.bark : mix(C.bark, C.wood, 0.3), { x: cx, y, z, rz: Math.PI / 2 }));
-        p.body.push(cyl(r * 0.9, r * 0.9, 0.012, 7, C.woodLight, { x: cx + l / 2, y, z, rz: Math.PI / 2 }));
-        p.body.push(cyl(r * 0.9, r * 0.9, 0.012, 7, C.woodLight, { x: cx - l / 2, y, z, rz: Math.PI / 2 }));
+        p.body.push(cyl(r, r, l, 7, k % 2 ? C.bark : mix(C.bark, C.wood, 0.3), { x: cx2, y, z, rz: Math.PI / 2 }));
+        p.body.push(cyl(r * 0.88, r * 0.88, 0.012, 7, C.woodLight, { x: cx2 + l / 2, y, z, rz: Math.PI / 2 }));
+        p.body.push(cyl(r * 0.88, r * 0.88, 0.012, 7, C.woodLight, { x: cx2 - l / 2, y, z, rz: Math.PI / 2 }));
       }
     }
-    for (const s of [-1, 1]) p.body.push(box(0.04, 0.32, 0.04, C.woodDark, { x: cx, y: PT + 0.16, z: cz + s * (n * 0.12 + 0.02) }));
+    for (const s of [-1, 1]) p.body.push(box(0.04, 0.34, 0.04, C.woodDark, { x: cx2, y: PT + 0.17, z: cz2 + s * (n * 0.12 + 0.02) }));
   };
-  pile(-0.85, 0.82, 3, 0.85);
+  pile(-0.88, 0.8, 3, 0.85);
   // Sawdust heap and a chopping stump with an axe.
-  p.body.push(cone(0.2, 0.12, 7, '#d9b77a', { x: 1.12, y: PT + 0.06, z: 1.1 }));
-  p.body.push(cyl(0.12, 0.13, 0.16, 7, C.bark, { x: 0.25, y: PT + 0.08, z: 1.12 }));
-  p.body.push(cyl(0.115, 0.115, 0.012, 7, C.woodLight, { x: 0.25, y: PT + 0.165, z: 1.12 }));
-  p.body.push(box(0.025, 0.3, 0.025, C.woodLight, { x: 0.25, y: PT + 0.3, z: 1.12, rz: 0.35 }));
-  p.body.push(box(0.12, 0.06, 0.02, C.ironDark, { x: 0.23, y: PT + 0.2, z: 1.12, rz: 0.35 }));
-  // Pennant on the ridge.
-  p.body.push(cyl(0.012, 0.016, 0.36, 5, C.woodDark, { x: x1 + 0.12, y: top + 0.85, z: (z0 + z1) / 2 }));
-  flagAt(p, x1 + 0.12, top + 1.02, (z0 + z1) / 2, 0.3, 0.13, tc.main, { shape: 'pennant' });
-  p.fx.fires.push([-0.9, 1.4, -0.5], [0.0, 1.4, -0.8], [0.9, 1.0, -0.7], [-0.85, 0.6, 0.8]);
+  p.body.push(cone(0.2, 0.12, 7, '#d9b77a', { x: 1.14, y: PT + 0.06, z: 1.12 }));
+  p.body.push(cyl(0.12, 0.13, 0.16, 7, C.bark, { x: 0.22, y: PT + 0.08, z: 1.14 }));
+  p.body.push(cyl(0.115, 0.115, 0.012, 7, C.woodLight, { x: 0.22, y: PT + 0.165, z: 1.14 }));
+  p.body.push(box(0.025, 0.3, 0.025, C.woodLight, { x: 0.22, y: PT + 0.3, z: 1.14, rz: 0.35 }));
+  p.body.push(box(0.12, 0.06, 0.02, C.iron, { x: 0.2, y: PT + 0.2, z: 1.14, rz: 0.35 }));
+  // Pennant on the front of the ridge.
+  p.body.push(cyl(0.012, 0.016, 0.3, 5, C.woodDark, { x: cx, y: top + 0.95, z: 0.02 }));
+  p.body.push(ico(0.025, 0, C.gold, { x: cx, y: top + 1.1, z: 0.02 }));
+  flagAt(p, cx, top + 1.08, 0.02, 0.28, 0.12, tc.main, { shape: 'pennant' });
+  p.fx.fires.push([-0.85, 1.45, -0.5], [-0.1, 1.4, -0.9], [0.9, 0.95, -0.7], [-0.88, 0.6, 0.8]);
   p.core = { x0, x1, z0, z1, top };
 }
 
 function buildBlacksmith(p) {
   const tc = p.tc;
   plinth(p, 2.82, 2.82);
-  p.body.push(box(2.7, 0.02, 1.2, '#5a5249', { y: PT + 0.01, z: 0.74 }));
+  p.body.push(box(2.7, 0.02, 1.2, mix(C.dirt, '#5a5249', 0.55), { y: PT + 0.01, z: 0.74 }));
   // Stone workshop.
   const x0 = -1.32;
   const x1 = 0.36;
@@ -889,7 +954,7 @@ function buildBlacksmith(p) {
   const z1 = 0.05;
   const top = 1.0;
   stoneWalls(p, x0, x1, z0, z1, PT, top, { color: mix(C.stone, C.stoneDark, 0.25), density: 0.4 });
-  gableRoof(p, { x: (x0 + x1) / 2, z: (z0 + z1) / 2, y: top - 0.03, w: 1.94, d: 1.7, h: 0.72, color: tc.main, end: C.stone, rows: 4 });
+  hipRoof(p, { x: (x0 + x1) / 2, z: (z0 + z1) / 2, y: top - 0.03, w: 1.92, d: 1.62, h: 0.78, color: tc.main, rows: 4 });
   doorAt(p, 'S', -0.42, z1, 0.32, 0.55);
   windowAt(p, 'S', -1.0, 0.62, z1, 0.17, 0.22, {});
   windowAt(p, 'W', x0, 0.62, -0.62, 0.17, 0.22, {});
@@ -898,9 +963,18 @@ function buildBlacksmith(p) {
   const fx1 = 1.22;
   const fz0 = -1.2;
   const fz1 = -0.2;
-  stoneWalls(p, fx0, fx1, fz0, fz1, PT, 0.92, { color: C.stoneDark, density: 0.5, faces: 'SE' });
-  p.body.push(frustum(fx1 - fx0 + 0.06, fz1 - fz0 + 0.06, 0.5, 0.5, 0.36, C.stoneDark, { x: (fx0 + fx1) / 2, y: 0.9, z: (fz0 + fz1) / 2 }));
-  chimneyAt(p, (fx0 + fx1) / 2, (fz0 + fz1) / 2, 1.2, 2.32, 0.42, 0.42, { color: C.stoneDark, heavy: true });
+  const forgeStone = mix(C.stone, C.stoneDark, 0.35);
+  stoneWalls(p, fx0, fx1, fz0, fz1, PT, 0.92, { color: forgeStone, density: 0.5, faces: 'SE' });
+  p.body.push(frustum(fx1 - fx0 + 0.06, fz1 - fz0 + 0.06, 0.5, 0.5, 0.36, C.stone, { x: (fx0 + fx1) / 2, y: 0.9, z: (fz0 + fz1) / 2 }));
+  chimneyAt(p, (fx0 + fx1) / 2, (fz0 + fz1) / 2, 1.2, 2.32, 0.42, 0.42, { color: forgeStone, heavy: true });
+  for (let y = 1.4; y < 2.2; y += 0.17) {
+    for (const [sx, sz] of [
+      [-1, 1],
+      [1, 1],
+    ]) {
+      p.body.push(box(0.12, 0.09, 0.07, QUOIN, { x: (fx0 + fx1) / 2 + sx * 0.18, y, z: (fz0 + fz1) / 2 + sz * 0.2, shade: (p.rnd() - 0.5) * 0.2 }));
+    }
+  }
   const mx = (fx0 + fx1) / 2;
   p.body.push(archAt('S', mx, fz1, 0.0, 0.56, 0.5, 0.06, C.stoneLight, PT + 0.1));
   p.glow.push(archAt('S', mx, fz1, 0.022, 0.44, 0.42, 0.04, GLOW.forge, PT + 0.12));
@@ -1007,89 +1081,101 @@ function buildTower(p) {
 
 function buildGoldmine(p) {
   // Earth mound reaching below ground.
-  p.body.push(ico(1, 1, mix(C.dirt, C.rockDark, 0.4), { y: -0.04, sx: 1.42, sy: 0.42, sz: 1.36 }));
+  p.body.push(ico(1, 1, mix(C.dirt, C.rockDark, 0.45), { y: -0.04, sx: 1.42, sy: 0.42, sz: 1.36 }));
   const rocks = [
-    [0, 0.62, -0.42, 0.92, 0.72],
-    [-0.82, 0.4, -0.22, 0.62, 0.78],
-    [0.84, 0.36, -0.3, 0.6, 0.78],
-    [-0.42, 0.3, -0.98, 0.52, 0.8],
-    [0.5, 0.28, -1.0, 0.5, 0.8],
-    [-1.02, 0.18, 0.5, 0.36, 0.85],
-    [1.02, 0.16, 0.48, 0.38, 0.8],
-    [-0.62, 0.12, 0.95, 0.26, 0.8],
-    [0.78, 0.1, 1.02, 0.24, 0.8],
-    [0.34, 1.0, -0.62, 0.42, 0.85],
+    [0, 0.66, -0.4, 0.95, 0.74],
+    [-0.84, 0.42, -0.25, 0.62, 0.78],
+    [0.86, 0.38, -0.32, 0.6, 0.8],
+    [-0.42, 0.32, -0.98, 0.52, 0.8],
+    [0.5, 0.3, -1.0, 0.5, 0.8],
+    [-1.04, 0.18, 0.48, 0.36, 0.85],
+    [1.04, 0.16, 0.46, 0.38, 0.8],
+    [-0.66, 0.12, 0.92, 0.26, 0.8],
+    [0.8, 0.1, 1.0, 0.24, 0.8],
+    [0.32, 1.06, -0.62, 0.42, 0.85],
+    [-0.5, 0.9, -0.5, 0.36, 0.8],
   ];
   rocks.forEach(([x, y, z, r, sy], i) => {
-    const col = i % 3 === 0 ? C.rock : i % 3 === 1 ? mix(C.rock, C.rockDark, 0.5) : mix(C.rock, C.stoneLight, 0.25);
+    const col = i % 3 === 0 ? C.rock : i % 3 === 1 ? mix(C.rock, C.rockDark, 0.55) : mix(C.rock, C.stoneLight, 0.3);
     p.body.push(dodeca(r, col, { x, y, z, sy, ry: i * 1.7, rx: (i % 2) * 0.3 }));
   });
-  // Grassy caps.
-  p.body.push(ico(0.42, 0, mix(C.grass, C.leaf, 0.3), { x: -0.1, y: 1.12, z: -0.5, sy: 0.25, ry: 0.4 }));
-  p.body.push(ico(0.3, 0, C.grass, { x: -0.86, y: 0.82, z: -0.3, sy: 0.25 }));
-  p.body.push(ico(0.26, 0, C.grass, { x: 0.86, y: 0.76, z: -0.4, sy: 0.25 }));
-  // Timber-framed tunnel entrance.
-  const ez = 0.6;
-  p.body.push(box(0.66, 0.74, 0.5, '#120d09', { y: 0.37, z: ez - 0.2 }));
-  for (const s of [-1, 1]) {
-    p.body.push(box(0.11, 0.84, 0.11, C.wood, { x: s * 0.38, y: 0.4, z: ez }));
-    p.body.push(box(0.09, 0.5, 0.09, C.woodDark, { x: s * 0.45, y: 0.25, z: ez + 0.12, rz: s * 0.25 }));
+  // Mossy tufts on top.
+  const moss = mix(C.grass, C.leafDark, 0.45);
+  for (const [x, y, z, r] of [
+    [-0.15, 1.18, -0.42, 0.26],
+    [0.25, 1.34, -0.66, 0.18],
+    [-0.9, 0.86, -0.32, 0.2],
+    [0.9, 0.82, -0.42, 0.18],
+  ]) {
+    p.body.push(ico(r, 0, moss, { x, y, z, sy: 0.22, ry: x * 3 }));
   }
-  p.body.push(box(1.0, 0.13, 0.14, C.woodDark, { y: 0.84, z: ez }));
-  gableRoof(p, { y: 0.9, z: ez - 0.05, w: 1.08, d: 0.5, h: 0.24, color: C.woodLight, alt: C.wood, end: C.woodDark, rows: 2, trim: null });
-  p.body.push(box(0.36, 0.14, 0.03, C.woodLight, { y: 0.72, z: ez + 0.08 }));
+  // Timber-framed tunnel entrance cut into the front.
+  const ez = 0.62;
+  p.body.push(box(0.6, 0.72, 0.6, '#0d0906', { y: 0.36, z: ez - 0.28 }));
+  p.body.push(box(0.6, 0.02, 0.5, mix(C.dirt, '#000000', 0.4), { y: 0.02, z: ez - 0.2 }));
+  for (const s of [-1, 1]) {
+    p.body.push(box(0.12, 0.84, 0.12, C.wood, { x: s * 0.37, y: 0.4, z: ez, rz: s * 0.04 }));
+    p.body.push(box(0.05, 0.3, 0.06, C.woodDark, { x: s * 0.24, y: 0.7, z: ez + 0.02, rz: s * 0.8 }));
+    p.body.push(dodeca(0.16, C.rockDark, { x: s * 0.52, y: 0.08, z: ez + 0.06, sy: 0.7 }));
+  }
+  p.body.push(box(1.0, 0.14, 0.15, C.woodDark, { y: 0.86, z: ez }));
+  p.body.push(box(1.04, 0.05, 0.3, C.wood, { y: 0.96, z: ez - 0.06, rx: 0.25 }));
+  p.body.push(box(0.34, 0.12, 0.025, C.woodLight, { y: 0.86, z: ez + 0.085 }));
+  p.body.push(box(0.2, 0.03, 0.01, C.woodDark, { y: 0.87, z: ez + 0.1, rz: 0.5 }));
+  p.body.push(box(0.2, 0.03, 0.01, C.woodDark, { y: 0.87, z: ez + 0.1, rz: -0.5 }));
   // Rails, sleepers and a gravel bed.
   p.body.push(box(0.56, 0.14, 0.85, '#7d7466', { y: -0.04, z: 1.03 }));
   for (let i = 0; i < 6; i++) p.body.push(box(0.44, 0.03, 0.07, C.woodDark, { y: 0.04, z: 0.7 + i * 0.13 }));
-  for (const s of [-1, 1]) p.metal.push(box(0.03, 0.035, 0.84, C.iron, { x: s * 0.13, y: 0.07, z: 1.02 }));
+  for (const s of [-1, 1]) p.metal.push(box(0.03, 0.035, 0.9, C.iron, { x: s * 0.13, y: 0.07, z: 0.98 }));
   // Mine cart full of gold.
-  const cz = 1.08;
+  const cz = 1.1;
   p.body.push(frustum(0.34, 0.26, 0.42, 0.32, 0.22, C.wood, { y: 0.13, z: cz }));
   for (const s of [-1, 1]) p.body.push(box(0.44, 0.03, 0.03, C.ironDark, { y: 0.31, z: cz + s * 0.155 }));
+  for (const s of [-1, 1]) p.body.push(box(0.03, 0.2, 0.33, C.ironDark, { x: s * 0.19, y: 0.23, z: cz }));
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) p.metal.push(cyl(0.065, 0.065, 0.04, 8, C.ironDark, { x: sx * 0.15, y: 0.11, z: cz + sz * 0.1, rz: Math.PI / 2 }));
-  p.body.push(ico(0.16, 0, C.gold, { y: 0.35, z: cz, sx: 1.1, sy: 0.55 }));
-  for (let i = 0; i < 4; i++) p.glow.push(ico(0.045, 0, GLOW.gold, { x: -0.1 + i * 0.07, y: 0.4 + (i % 2) * 0.02, z: cz + (i % 2 ? 0.05 : -0.04) }));
+  p.body.push(ico(0.17, 0, C.gold, { y: 0.35, z: cz, sx: 1.15, sy: 0.55 }));
+  for (let i = 0; i < 5; i++) p.glow.push(ico(0.045, 0, GLOW.gold, { x: -0.12 + i * 0.06, y: 0.41 + (i % 2) * 0.02, z: cz + (i % 2 ? 0.05 : -0.04) }));
   // Lanterns on the posts.
   for (const s of [-1, 1]) {
-    p.body.push(box(0.12, 0.025, 0.025, C.ironDark, { x: s * 0.38, y: 0.7, z: ez + 0.1 }));
-    p.body.push(box(0.07, 0.1, 0.07, C.ironDark, { x: s * 0.38, y: 0.6, z: ez + 0.16 }));
-    p.glow.push(box(0.05, 0.07, 0.075, GLOW.lantern, { x: s * 0.38, y: 0.6, z: ez + 0.16 }));
-    p.fx.lanterns.push([s * 0.38, 0.6, ez + 0.16]);
+    p.body.push(box(0.025, 0.025, 0.12, C.ironDark, { x: s * 0.37, y: 0.7, z: ez + 0.1 }));
+    p.body.push(box(0.075, 0.1, 0.075, C.ironDark, { x: s * 0.37, y: 0.6, z: ez + 0.15 }));
+    p.glow.push(box(0.055, 0.075, 0.08, GLOW.lantern, { x: s * 0.37, y: 0.6, z: ez + 0.15 }));
+    p.fx.lanterns.push([s * 0.37, 0.6, ez + 0.16]);
   }
   p.fx.entrance = [0, 0.3, ez + 0.1];
-  // Gold veins: crystal clusters set into the rock faces.
+  // Gold veins: streaks of nuggets running across the rock faces.
   const veins = [
-    [0, 1, 0.55, 0.6, 0.4],
-    [0, -0.45, 0.6, 0.65, 0.4],
-    [0, 0.35, 0.95, -0.2, 0.2],
-    [1, 0.3, 0.5, 0.8, 0.0],
-    [2, -0.2, 0.6, 0.75, 0.2],
-    [3, -0.3, 0.7, 0.6, 0.1],
-    [4, 0.5, 0.75, 0.4, 0.3],
-    [5, 0.2, 0.5, 0.8, 0.4],
-    [6, -0.3, 0.6, 0.8, 0.0],
-    [9, 0.2, 0.7, 0.7, 0.2],
+    [0, 0.8, 0.55, 0.55, 0.6],
+    [0, -0.55, 0.45, 0.7, -0.5],
+    [0, 0.1, 0.9, 0.3, 0.9],
+    [1, 0.3, 0.5, 0.8, 0.7],
+    [2, -0.25, 0.55, 0.8, -0.7],
+    [3, -0.3, 0.75, 0.55, 0.4],
+    [4, 0.45, 0.8, 0.35, -0.4],
+    [5, 0.25, 0.55, 0.8, 0.8],
+    [6, -0.3, 0.6, 0.8, -0.6],
+    [9, 0.3, 0.6, 0.75, 0.5],
+    [10, -0.4, 0.6, 0.7, -0.3],
   ];
-  for (const [ri, dx, dy, dz] of veins) {
+  for (const [ri, dx, dy, dz, tilt] of veins) {
     const [rx, ry, rz, r, sy] = rocks[ri];
     const l = Math.hypot(dx, dy, dz);
-    const vx = rx + (dx / l) * r * 0.86;
-    const vy = ry + (dy / l) * r * sy * 0.86;
-    const vz = rz + (dz / l) * r * 0.86;
-    for (let k = 0; k < 3; k++) {
-      const s = 0.045 + p.rnd() * 0.04;
-      const ox = (p.rnd() - 0.5) * 0.14;
-      const oy = (p.rnd() - 0.5) * 0.1;
-      const t = { x: vx + ox, y: vy + oy, z: vz + 0.02, rx: p.rnd() * 3, ry: p.rnd() * 3, sy: 1.4 };
-      if (k === 0) p.glow.push(ico(s * 0.8, 0, GLOW.gold, t));
-      else p.metal.push(ico(s, 0, C.gold, t));
+    const vx = rx + (dx / l) * r * 0.84;
+    const vy = ry + (dy / l) * r * sy * 0.84;
+    const vz = rz + (dz / l) * r * 0.84;
+    for (let k = -2; k <= 2; k++) {
+      const s = 0.035 + (2 - Math.abs(k)) * 0.016 + p.rnd() * 0.015;
+      const t = { x: vx + k * 0.07, y: vy + k * 0.07 * tilt, z: vz + 0.02 - Math.abs(k) * 0.025, rx: p.rnd() * 3, ry: p.rnd() * 3, sy: 1.3 };
+      if (k === 0) p.glow.push(ico(s * 0.85, 0, GLOW.gold, t));
+      else p.body.push(ico(s, 0, k % 2 ? C.gold : mix(C.gold, '#fff2b0', 0.3), t));
     }
-    p.fx.glints.push([vx, vy + 0.03, vz + 0.04]);
+    p.fx.glints.push([vx, vy + 0.03, vz + 0.05]);
   }
-  // Props: a pickaxe and spare timbers.
-  p.body.push(box(0.03, 0.42, 0.03, C.woodLight, { x: -0.62, y: 0.22, z: 0.82, rz: 0.3 }));
-  p.metal.push(box(0.26, 0.04, 0.03, C.iron, { x: -0.68, y: 0.42, z: 0.82, rz: 0.3 + 0.2 }));
-  for (let i = 0; i < 3; i++) p.body.push(box(0.6, 0.07, 0.07, i % 2 ? C.wood : C.woodDark, { x: 0.82, y: 0.04 + i * 0.07, z: 0.86 + (i % 2) * 0.04, ry: 0.6 }));
+  // Props: a pickaxe, spare timbers and a few loose nuggets.
+  p.body.push(box(0.03, 0.42, 0.03, C.woodLight, { x: -0.64, y: 0.22, z: 0.84, rz: 0.3 }));
+  p.metal.push(box(0.26, 0.04, 0.03, C.iron, { x: -0.7, y: 0.42, z: 0.84, rz: 0.5 }));
+  for (let i = 0; i < 3; i++) p.body.push(box(0.6, 0.07, 0.07, i % 2 ? C.wood : C.woodDark, { x: 0.84, y: 0.04 + i * 0.07, z: 0.86 + (i % 2) * 0.04, ry: 0.6 }));
+  for (let i = 0; i < 4; i++) p.body.push(ico(0.035, 0, C.gold, { x: -0.3 + p.rnd() * 0.15, y: 0.04, z: 1.05 + p.rnd() * 0.2 }));
   p.core = { x0: -1, x1: 1, z0: -1, z1: 0.6, top: 1.2 };
 }
 
@@ -1116,14 +1202,34 @@ function buildFallback(p, size) {
 const defs = new Map();
 const kits = new Map();
 
-/** Darkens vertices near the ground a little: cheap baked ambient occlusion. */
-function bakeOcclusion(g) {
+// The renderer's sun direction (index.js sunOffset); faces turned away from it
+// only get the weak sky fill, which leaves every camera-facing wall nearly
+// black, so a little bounce light is baked into their vertex colours.
+const SUN = new THREE.Vector3(-20, 34, -13).normalize();
+
+/**
+ * Bakes soft lighting into vertex colours: darker near the ground (contact
+ * occlusion) and a lift on vertical faces turned away from the sun.
+ */
+function bakeLight(g, o = {}) {
   const pos = g.attributes.position;
+  const nrm = g.attributes.normal;
   const col = g.attributes.color;
+  const lift = o.lift ?? 0.75;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
-    const k = 0.72 + 0.28 * clamp01((y - 0.02) / 0.42);
-    if (k < 1) col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k);
+    let k = o.ao === false ? 1 : 0.74 + 0.26 * clamp01((y - 0.02) / 0.4);
+    const nx = nrm.getX(i);
+    const ny = nrm.getY(i);
+    const nz = nrm.getZ(i);
+    const ndl = nx * SUN.x + ny * SUN.y + nz * SUN.z;
+    const away = clamp01((0.2 - ndl) / 0.5) * clamp01(1 - Math.abs(ny) * 1.2);
+    k *= 1 + lift * away;
+    const r = col.getX(i) * k;
+    const gg = col.getY(i) * k;
+    const b = col.getZ(i) * k;
+    const mx = Math.max(r, gg, b, 1);
+    col.setXYZ(i, r / mx, gg / mx, b / mx);
   }
   return g;
 }
@@ -1137,14 +1243,14 @@ function modelDef(type, owner) {
   const size = BUILDINGS[type]?.size || 2;
   (BUILDERS[type] || ((q) => buildFallback(q, size)))(p);
   const geos = {
-    body: p.body.length ? bakeOcclusion(merge(p.body)) : null,
-    metal: p.metal.length ? merge(p.metal) : null,
+    body: p.body.length ? bakeLight(merge(p.body)) : null,
+    metal: p.metal.length ? bakeLight(merge(p.metal), { ao: false }) : null,
     glow: p.glow.length ? merge(p.glow) : null,
-    cloth: p.cloth.length ? merge(p.cloth) : null,
-    spin: p.spin.length ? merge(p.spin) : null,
+    cloth: p.cloth.length ? bakeLight(merge(p.cloth), { ao: false, lift: 0.5 }) : null,
+    spin: p.spin.length ? bakeLight(merge(p.spin), { ao: false }) : null,
   };
   for (const g of Object.values(geos)) g?.computeBoundingSphere();
-  def = { type, owner, size, height: HEIGHT[type] || size * 0.75, geos, spinAt: p.spinAt, fx: p.fx, core: p.core };
+  def = { type, owner, size, height: heightOf(type), geos, spinAt: p.spinAt, fx: p.fx, core: p.core };
   defs.set(key, def);
   return def;
 }
@@ -1225,11 +1331,8 @@ function constructionKit(type) {
     for (let y = 0.12; y < lt - 0.05; y += 0.13) g.push(box(0.18, 0.02, 0.02, C.woodLight, { x: lx, y, z: Z1 + 0.12 - (y - lt / 2) * 0.12 }));
     return merge(g);
   };
-  // Building materials piled at the front-left corner.
-  const stages = [0.42, 0.84, Math.max(1.0, full - 0.15)].map((t, i) => {
-    const g = stage(i === 0 ? 0 : Math.min(full, t));
-    return g;
-  });
+  const stages = [0, 0.84, Math.max(1.0, Math.min(full - 0.15, core.top + 0.9))].map((t) => stage(t));
+  // Building materials piled at the front-left corner while the foundation is laid.
   stages[0] = merge([stages[0], ...pileGeo(core)]);
   // Plank floor capping the hollow walls at the build height.
   let cap;
@@ -1282,7 +1385,7 @@ function buildModel(def, palette, mats) {
   add('metal', def.geos.metal, palette.metal, true);
   add('glow', def.geos.glow, mats ? mats.glow : palette.glow, false);
   add('cloth', def.geos.cloth, mats ? mats.cloth : palette.matte, true);
-  add('spin', def.geos.spin, palette.metal, true);
+  add('spin', def.geos.spin, palette.matte, true);
   if (parts.spin) parts.spin.position.set(...def.spinAt);
   group.userData.parts = parts;
   group.userData.buildingType = def.type;
@@ -1454,7 +1557,7 @@ export class BuildingLayer {
   }
 
   metrics(b) {
-    const h = HEIGHT[b.type] || 1.5;
+    const h = heightOf(b.type);
     if (b.constructing) return { height: Math.max(0.7, Math.min(h, this.cutHeight(h, b.progress) + 0.45)) };
     return { height: h };
   }
