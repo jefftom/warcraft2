@@ -609,7 +609,7 @@ button.cmd kbd {
   position: relative;
   padding: 28px 30px 24px;
   background:
-    linear-gradient(180deg, rgba(58, 43, 30, 0.97), rgba(29, 22, 16, 0.97));
+    linear-gradient(180deg, #3a2b1e, #1d1610);
   border: 1px solid var(--brass);
   border-radius: 4px;
   box-shadow: 0 0 0 5px rgba(20, 16, 12, 0.85), 0 24px 60px rgba(0, 0, 0, 0.7);
