@@ -91,8 +91,9 @@ button {
 .crest {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: var(--step-2);
-  letter-spacing: 0.04em;
+  font-size: 1.3rem;
+  letter-spacing: 0.03em;
+  text-wrap: balance;
   color: var(--gold);
   text-align: center;
   line-height: 1;

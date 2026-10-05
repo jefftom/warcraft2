@@ -1,4 +1,4 @@
-# Ironvale
+# Kingdoms of Plastic
 
 A real-time strategy game for the browser in the spirit of Warcraft II. Mine
 gold, chop lumber, build a town and an army, and destroy the computer

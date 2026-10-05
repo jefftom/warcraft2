@@ -32,5 +32,5 @@ createServer(async (req, res) => {
     res.writeHead(404).end('Not found');
   }
 }).listen(port, () => {
-  console.log(`Ironvale running at http://localhost:${port}`);
+  console.log(`Kingdoms of Plastic running at http://localhost:${port}`);
 });

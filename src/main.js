@@ -217,8 +217,8 @@ function endGame(winner) {
   $('end-eyebrow').textContent = `${DIFFICULTY[g.difficulty].label} enemy · ${formatTime(g.time)}`;
   $('end-title').textContent = won ? 'Victory' : 'Defeat';
   $('end-text').textContent = won
-    ? 'The red stronghold lies in ruins. Ironvale is yours.'
-    : 'Your last stronghold has fallen. The red banners fly over Ironvale.';
+    ? 'The red stronghold lies in ruins. The kingdom is yours.'
+    : 'Your last stronghold has fallen. The red banners fly over the kingdom.';
   const [you, foe] = g.players;
   const rows = [
     ['Gold mined', 'goldMined'],
