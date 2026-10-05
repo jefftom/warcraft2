@@ -22,7 +22,13 @@ export const PRESETS = {
   foliage: { x: 55, z: 44, d: 19 },
   effects: { x: 44, z: 36, d: 15 },
   fog: { x: 66, z: 42, d: 28 },
+  // Brick-style prototype scene (?style=brick).
+  brick: { x: 26.5, z: 40.5, d: 13 },
+  brickclose: { x: 24, z: 39.6, d: 6.2 },
+  brickwide: { x: 28, z: 41, d: 22 },
+  brickunits: { x: 22.5, z: 37.2, d: 5.5 },
 };
+const style = params.get('style') === 'brick' ? 'brick' : 'standard';
 
 const game = new Game({ seed: 3, ai: false });
 const { map } = game;
@@ -110,9 +116,45 @@ game.addEffect({ type: 'rubble', x: 39.5 * TILE, y: 37 * TILE, size: 3, life: 99
 game.revealMap = params.get('fog') !== '1';
 game.updateFog();
 
+// The brick prototype scene: footmen of both sides, farms in every state,
+// a copse, a pond and a path. It sits on top of the standard scene's stage.
+if (style === 'brick') {
+  for (let y = 35; y < 48; y++) for (let x = 15; x < 40; x++) map.set(x, y, T.GRASS);
+  for (const b of [...game.buildings]) if (b.x + b.size > 14 && b.x < 41 && b.y + b.size > 34 && b.y < 49) game.removeBuilding(b);
+  for (const u of [...game.units]) if (u.tx >= 14 && u.tx < 41 && u.ty >= 34 && u.ty < 49) game.kill(u);
+  game.cleanup();
+  for (let x = 15; x < 40; x++) map.set(x, 38, T.DIRT);
+  for (let y = 43; y < 47; y++) for (let x = 16; x < 20; x++) if ((x - 17.5) ** 2 + (y - 44.8) ** 2 < 4.2) map.set(x, y, T.WATER);
+  for (let y = 40; y < 47; y++) for (let x = 33; x < 39; x++) if ((x - 35.5) ** 2 + (y - 43) ** 2 < 9) map.set(x, y, T.TREE);
+  map.set(31, 45, T.ROCK);
+  map.set(21, 46, T.STUMP);
+  game.addBuilding('farm', PLAYER, 21, 40);
+  game.addBuilding('farm', PLAYER, 24, 40);
+  const half = game.addBuilding('farm', PLAYER, 27, 40);
+  half.constructing = true;
+  half.progress = 0.55;
+  half.hp = half.maxHp * 0.6;
+  game.addBuilding('farm', ENEMY, 30, 40);
+  game.addBuilding('farm', ENEMY, 22, 43);
+  const blues = [];
+  const reds = [];
+  for (let i = 0; i < 4; i++) {
+    blues.push(game.addUnit('footman', PLAYER, 21 + i, 36));
+    reds.push(game.addUnit('footman', ENEMY, 28 + i, 36));
+  }
+  blues.push(game.addUnit('peasant', PLAYER, 25, 39), game.addUnit('archer', PLAYER, 20, 37), game.addUnit('knight', PLAYER, 19, 36));
+  reds.push(game.addUnit('knight', ENEMY, 32, 37), game.addUnit('archer', ENEMY, 33, 36));
+  blues[4].carry = { type: 'gold', amount: 10 };
+  setTimeout(() => {
+    game.commandAttack(blues.slice(0, 3), reds[0]);
+    game.commandAttack(reds.slice(0, 3), blues[0]);
+    game.commandMove([blues[4]], 33, 39);
+  }, 300);
+}
+
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('game');
-const renderer = new Renderer3D(canvas, game, stage);
+const renderer = new Renderer3D(canvas, game, stage, { style });
 const preset = PRESETS[focus] || PRESETS.overview;
 
 function resize() {
@@ -134,7 +176,7 @@ const markers = [
   { x: 37 * TILE, y: 34 * TILE, color: '#ff5040', t: 0, life: 1e9 },
 ];
 const barracks = game.buildings.find((b) => b.type === 'barracks' && b.owner === PLAYER && !b.constructing);
-game.setRally(barracks, 30, 37, null);
+if (barracks) game.setRally(barracks, 30, 37, null);
 let elapsed = 0;
 let fightStarted = false;
 let last = performance.now();

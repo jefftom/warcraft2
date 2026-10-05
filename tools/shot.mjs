@@ -70,7 +70,7 @@ async function shoot(url, name, prepare) {
   if (prepare) await prepare(page);
   await page.waitForTimeout(wait);
   const file = join(out, `${name}.png`);
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, timeout: 180000 });
   const stats = await page.evaluate(() => window.__showcase || null).catch(() => null);
   report.push({ name, file, stats, errors });
   await page.close();
@@ -97,7 +97,8 @@ try {
     const focuses = args.focus === 'all' ? all : (args.focus || 'overview').split(',');
     for (const f of focuses) {
       const fog = f === 'fog' || args.fog ? '&fog=1' : '';
-      await shoot(`${base}/tools/showcase.html?focus=${f}${fog}`, `showcase-${f}`);
+      const st = args.style ? `&style=${args.style}` : '';
+      await shoot(`${base}/tools/showcase.html?focus=${f}${fog}${st}`, `showcase-${f}${args.style ? `-${args.style}` : ''}`);
     }
   }
 } finally {

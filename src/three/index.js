@@ -27,6 +27,12 @@ import { BuildingLayer } from './buildings.js';
 import { UnitLayer } from './units.js';
 import { EffectsLayer } from './effects.js';
 import { Overlay } from './overlay.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { BrickTerrain } from './brick/terrain.js';
+import { BrickFoliage } from './brick/foliage.js';
+import { BrickBuildingLayer } from './brick/buildings.js';
+import { BrickUnitLayer } from './brick/units.js';
+import { DioramaPost } from './post.js';
 
 /**
  * Shared context handed to every layer.
@@ -45,9 +51,15 @@ import { Overlay } from './overlay.js';
  */
 
 export class Renderer3D {
-  constructor(canvas, game, stage) {
+  /**
+   * @param {{style?: 'standard'|'brick'}} [opts] `brick` swaps every model for
+   *   toy bricks and minifigures and renders like a photographed diorama
+   *   (prototype: minifigures, farms, trees and the baseplate).
+   */
+  constructor(canvas, game, stage, opts = {}) {
     this.canvas = canvas;
     this.game = game;
+    this.style = opts.style === 'brick' ? 'brick' : 'standard';
     this.clock = 0;
     this.width = 1;
     this.height = 1;
@@ -102,16 +114,31 @@ export class Renderer3D {
       layers: {},
     };
     this.ctx = ctx;
-    const terrain = new Terrain(ctx);
+    const brick = this.style === 'brick';
+    ctx.style = this.style;
+    if (brick) {
+      // Glossy plastic needs something to reflect.
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+      scene.environment = this.envMap;
+      scene.environmentIntensity = 0.32;
+      hemi.intensity = 0.6;
+      sun.intensity = 2.2;
+      renderer.toneMappingExposure = 0.92;
+      scene.background = new THREE.Color(0x1a120c);
+    }
+    const terrain = brick ? new BrickTerrain(ctx) : new Terrain(ctx);
     ctx.heightAt = (x, z) => terrain.heightAt(x, z);
     ctx.layers.terrain = terrain;
-    ctx.layers.foliage = new FoliageLayer(ctx);
-    ctx.layers.buildings = new BuildingLayer(ctx);
-    ctx.layers.units = new UnitLayer(ctx);
+    ctx.layers.foliage = brick ? new BrickFoliage(ctx) : new FoliageLayer(ctx);
+    ctx.layers.buildings = brick ? new BrickBuildingLayer(ctx) : new BuildingLayer(ctx);
+    ctx.layers.units = brick ? new BrickUnitLayer(ctx) : new UnitLayer(ctx);
     ctx.layers.effects = new EffectsLayer(ctx);
     this.layers = ctx.layers;
 
     this.overlay = new Overlay(stage, canvas);
+    this.post = brick ? new DioramaPost(renderer, scene, this.rig.camera) : null;
     this._p = { x: 0, y: 0, z: 0 };
     game.map.dirty.length = 0;
   }
@@ -126,6 +153,7 @@ export class Renderer3D {
     this.renderer.setSize(width, height, true);
     this.rig.setSize(width, height);
     this.overlay.resize(width, height, dpr);
+    if (this.post) this.post.setSize(width, height, dpr);
   }
 
   dispose() {
@@ -134,6 +162,8 @@ export class Renderer3D {
     this.palette.dispose();
     this.fog.dispose();
     this.overlay.dispose();
+    if (this.post) this.post.dispose();
+    if (this.envMap) this.envMap.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }
@@ -180,7 +210,8 @@ export class Renderer3D {
       sc.updateProjectionMatrix();
     }
 
-    this.renderer.render(this.scene, this.rig.camera);
+    if (this.post) this.post.render();
+    else this.renderer.render(this.scene, this.rig.camera);
     this.overlay.draw(this.healthBars(frame), frame.dragRect);
   }
 
