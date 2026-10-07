@@ -39,7 +39,7 @@ async function loadPlaywright() {
   throw new Error('Playwright not found. Install it with `npm i -D playwright`.');
 }
 
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.glb': 'model/gltf-binary' };
 const server = createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
   const file = join(root, path.endsWith('/') ? `${path}index.html` : path);

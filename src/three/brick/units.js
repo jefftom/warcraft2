@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { TILE } from '../../config.js';
 import { teamColors } from '../palette.js';
 import { BRICK_COLORS, BRICK, PLATE, PITCH, brick, cyl, merge, part, plastic, rbox, roundBrick, sphere, torus } from './kit.js';
+import { GltfFigure, figureKey, loadFigures } from './figures.js';
 
 const MM = 0.025; // world units per millimetre at this scale
 const SKIN = BRICK_COLORS.yellow;
@@ -217,6 +218,7 @@ class Minifig {
     const k = kit(u.type, u.owner);
     const mat = layer.mat;
     this.type = u.type;
+    this.key = figureKey(u);
     this.root = new THREE.Group();
     this.rider = new THREE.Group();
     this.root.add(this.rider);
@@ -303,6 +305,17 @@ export class BrickUnitLayer {
     this.group = new THREE.Group();
     ctx.scene.add(this.group);
     this.figs = new Map();
+    // Blender-made figures replace the built-in ones as soon as they load.
+    this.assets = {};
+    loadFigures(ctx.assetBase || '').then((assets) => {
+      if (this.disposed) return;
+      this.assets = assets;
+      for (const [id, f] of this.figs) {
+        if (!assets[f.key] || f instanceof GltfFigure) continue;
+        f.root.removeFromParent();
+        this.figs.delete(id);
+      }
+    });
   }
 
   metrics(u) {
@@ -318,9 +331,13 @@ export class BrickUnitLayer {
       seen.add(u.id);
       let f = this.figs.get(u.id);
       if (!f) {
-        f = new Minifig(this, u);
-        f.carryMat = this.mat;
-        f.yaw = Math.atan2(u.dirX || 0, u.dirY || 1);
+        const asset = this.assets[figureKey(u)];
+        if (asset) f = new GltfFigure(asset, u, this.mat);
+        else {
+          f = new Minifig(this, u);
+          f.carryMat = this.mat;
+          f.yaw = Math.atan2(u.dirX || 0, u.dirY || 1);
+        }
         this.figs.set(u.id, f);
         this.group.add(f.root);
       }
@@ -331,7 +348,8 @@ export class BrickUnitLayer {
     }
     for (const [id, f] of this.figs) {
       if (seen.has(id)) continue;
-      f.root.removeFromParent();
+      if (f.dispose) f.dispose();
+      else f.root.removeFromParent();
       this.figs.delete(id);
     }
   }
@@ -345,6 +363,11 @@ export class BrickUnitLayer {
       f.yaw += d * Math.min(1, dt * 12);
     }
     f.root.rotation.y = f.yaw;
+    if (f instanceof GltfFigure) {
+      f.update(u, dt);
+      f.root.rotation.x = u.flash > 0 ? -0.15 : 0;
+      return;
+    }
     const mounted = !!f.horse;
     const walking = u.moving;
     const ph = u.walkAnim * Math.PI * 2 * (mounted ? 0.55 : 0.85);
@@ -393,6 +416,9 @@ export class BrickUnitLayer {
   }
 
   dispose() {
+    this.disposed = true;
+    for (const f of this.figs.values()) if (f.dispose) f.dispose();
+    for (const a of Object.values(this.assets)) a.dispose();
     this.group.removeFromParent();
     this.mat.dispose();
   }

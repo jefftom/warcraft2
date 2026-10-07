@@ -116,6 +116,7 @@ export class Renderer3D {
     this.ctx = ctx;
     const brick = this.style === 'brick';
     ctx.style = this.style;
+    ctx.assetBase = opts.assetBase ?? '';
     if (brick) {
       // Glossy plastic needs something to reflect.
       const pmrem = new THREE.PMREMGenerator(renderer);

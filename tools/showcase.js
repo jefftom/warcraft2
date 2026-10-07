@@ -27,6 +27,7 @@ export const PRESETS = {
   brickclose: { x: 24, z: 39.6, d: 6.2 },
   brickwide: { x: 28, z: 41, d: 22 },
   brickunits: { x: 22.5, z: 37.2, d: 5.5 },
+  brickarmies: { x: 26.5, z: 36.6, d: 8.5 },
 };
 const style = params.get('style') === 'brick' ? 'brick' : 'standard';
 
@@ -154,7 +155,7 @@ if (style === 'brick') {
 
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('game');
-const renderer = new Renderer3D(canvas, game, stage, { style });
+const renderer = new Renderer3D(canvas, game, stage, { style, assetBase: '../' });
 const preset = PRESETS[focus] || PRESETS.overview;
 
 function resize() {
