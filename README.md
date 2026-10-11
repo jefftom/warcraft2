@@ -7,8 +7,9 @@ opponent's base before it destroys yours.
 The battlefield is drawn in 3D with [three.js](https://threejs.org): stylised
 low-poly models, real-time shadows, animated water and swaying forests. A
 classic top-down 2D view is one click away on the title screen, and is used
-automatically when WebGL isn't available. All art and sound are generated in
-code, so the repository contains no image or audio files.
+automatically when WebGL isn't available. Sound and most art are generated in
+code; a toy-brick style in progress uses soldier models built by Blender
+scripts (`tools/blender/`).
 
 ## Play
 
